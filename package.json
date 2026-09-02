@@ -1,0 +1,23 @@
+{
+  "name": "boom",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace=apps/api run dev",
+    "dev:web": "npm --workspace=apps/web run dev",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "build:types": "npm --workspace=packages/types run build",
+    "build:api": "npm --workspace=apps/api run build",
+    "build:web": "npm --workspace=apps/web run build",
+    "build": "npm run build:types && npm run build:api && npm run build:web",
+    "test": "npm --workspace=apps/api run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.2"
+  }
+}

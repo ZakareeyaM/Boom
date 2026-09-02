@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: boom_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: boom
+      POSTGRES_PASSWORD: boom_secure_password
+      POSTGRES_DB: boom_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boom -d boom_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  boom-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: boom_app
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: postgres://boom:boom_secure_password@postgres:5432/boom_db
+      JWT_SECRET: boom_super_secret_production_key_2026
+      CORS_ORIGIN: "*"
+      MAX_PARTICIPANTS: 10
+
+volumes:
+  pgdata:
