@@ -17,7 +17,6 @@ import {
 import { useMediaStream } from '../hooks/useMediaStream';
 import { useScreenShare } from '../hooks/useScreenShare';
 import { useWebRTC } from '../hooks/useWebRTC';
-import { useAuth } from '../context/AuthContext';
 import type { Participant, DrawLinePayload } from '@boom/types';
 
 export const MeetingRoomPage: React.FC = () => {
@@ -25,10 +24,9 @@ export const MeetingRoomPage: React.FC = () => {
   const meetingCode = meetingId || '';
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token } = useAuth();
 
   const stateData = (location.state as any) || {};
-  const displayName = stateData.displayName || user?.name || 'Guest';
+  const displayName = stateData.displayName || 'Guest';
   const initialAudio = stateData.audioEnabled !== undefined ? stateData.audioEnabled : true;
   const initialVideo = stateData.videoEnabled !== undefined ? stateData.videoEnabled : true;
 
@@ -118,7 +116,6 @@ export const MeetingRoomPage: React.FC = () => {
     videoEnabled,
     screenStream,
     isSharingScreen,
-    token,
     onKicked: (reason) => {
       navigate('/removed', { state: { reason } });
     },
