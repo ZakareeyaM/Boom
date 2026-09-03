@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   Pen,
   Eraser,
+  Crop,
   Trash2,
   Download,
   X,
@@ -10,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../common/Button';
 import { ParticipantTile } from './ParticipantTile';
-import type { Participant, ConnectionQuality, DrawLinePayload, WhiteboardState } from '@boom/types';
+import type { Participant, ConnectionQuality, DrawLinePayload, WhiteboardState, EraseRectPayload } from '@boom/types';
 
 interface WhiteboardStageProps {
   whiteboardState: WhiteboardState;
@@ -19,10 +20,13 @@ interface WhiteboardStageProps {
   remoteParticipants: Participant[];
   remoteStreams: Map<string, MediaStream>;
   connectionQuality: ConnectionQuality;
+  isHost: boolean;
   onDraw: (line: DrawLinePayload) => void;
   onStrokeEnd: () => void;
   onUndo: () => void;
   onClear: () => void;
+  onScroll: (scrollTop: number) => void;
+  onEraseRect: (rect: EraseRectPayload) => void;
   onClose: () => void;
 }
 
@@ -55,10 +59,13 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   remoteParticipants,
   remoteStreams,
   connectionQuality,
+  isHost,
   onDraw,
   onStrokeEnd,
   onUndo,
   onClear,
+  onScroll,
+  onEraseRect,
   onClose,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -66,9 +73,12 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
-  const [activeTool, setActiveTool] = useState<'pen' | 'eraser'>('pen');
+  const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'rect-erase'>('pen');
   const [selectedColor, setSelectedColor] = useState<string>('#ffffff');
   const [selectedSize, setSelectedSize] = useState<number>(5);
+  // Live rectangle currently being dragged out by the rect-erase tool (screen px, for the overlay only)
+  const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Synced stroke history: a "stroke" is everything drawn between a
   // pointer-down and pointer-up. Keeping the full history (rather than just
@@ -153,6 +163,33 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Remove every segment whose midpoint falls inside the given rectangle
+  // (normalized 0..1 coords, same space as DrawLinePayload). Used by the
+  // rectangle-select eraser, both locally and when a remote peer erases.
+  const applyEraseRect = useCallback(
+    (rect: EraseRectPayload) => {
+      const x1 = Math.min(rect.x1, rect.x2);
+      const x2 = Math.max(rect.x1, rect.x2);
+      const y1 = Math.min(rect.y1, rect.y2);
+      const y2 = Math.max(rect.y1, rect.y2);
+
+      const inRect = (x: number, y: number) => x >= x1 && x <= x2 && y >= y1 && y <= y2;
+
+      allStrokesRef.current = allStrokesRef.current
+        .map((stroke) =>
+          stroke.filter((seg) => {
+            const midX = (seg.prevX + seg.currX) / 2;
+            const midY = (seg.prevY + seg.currY) / 2;
+            return !inRect(midX, midY);
+          })
+        )
+        .filter((stroke) => stroke.length > 0);
+
+      redrawAll();
+    },
+    [redrawAll]
+  );
+
   const handleUndo = useCallback(() => {
     if (allStrokesRef.current.length === 0) return;
     allStrokesRef.current.pop();
@@ -203,13 +240,25 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       paintBackground();
     };
 
+    (window as any).__boom_scrollTo = (scrollTop: number) => {
+      if (containerRef.current) {
+        containerRef.current.scrollTop = scrollTop;
+      }
+    };
+
+    (window as any).__boom_eraseRect = (rect: EraseRectPayload) => {
+      applyEraseRect(rect);
+    };
+
     return () => {
       delete (window as any).__boom_drawSegment;
       delete (window as any).__boom_strokeEnd;
       delete (window as any).__boom_undo;
       delete (window as any).__boom_clearCanvas;
+      delete (window as any).__boom_scrollTo;
+      delete (window as any).__boom_eraseRect;
     };
-  }, [drawSegment, redrawAll, paintBackground]);
+  }, [drawSegment, redrawAll, paintBackground, applyEraseRect]);
 
   // Pointer event handlers for drawing (Mouse, Pen, Touch)
   const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -222,13 +271,43 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   };
 
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const point = getCoordinates(e);
+
+    if (activeTool === 'rect-erase') {
+      selectionStartRef.current = point;
+      const container = containerRef.current;
+      const widthPx = container?.clientWidth || 0;
+      setSelectionRect({ x: point.x * widthPx, y: point.y * BOARD_HEIGHT, w: 0, h: 0 });
+      return;
+    }
+
     isDrawingRef.current = true;
     currentLocalStrokeRef.current = [];
-    const point = getCoordinates(e);
     lastPointRef.current = point;
   };
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (activeTool === 'rect-erase') {
+      if (!selectionStartRef.current) return;
+      const container = containerRef.current;
+      const widthPx = container?.clientWidth || 0;
+      const start = selectionStartRef.current;
+      const curr = getCoordinates(e);
+
+      const x1px = start.x * widthPx;
+      const y1px = start.y * BOARD_HEIGHT;
+      const x2px = curr.x * widthPx;
+      const y2px = curr.y * BOARD_HEIGHT;
+
+      setSelectionRect({
+        x: Math.min(x1px, x2px),
+        y: Math.min(y1px, y2px),
+        w: Math.abs(x2px - x1px),
+        h: Math.abs(y2px - y1px),
+      });
+      return;
+    }
+
     if (!isDrawingRef.current || !lastPointRef.current) return;
     const currPoint = getCoordinates(e);
     const prevPoint = lastPointRef.current;
@@ -253,7 +332,24 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     lastPointRef.current = currPoint;
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (activeTool === 'rect-erase') {
+      if (selectionStartRef.current) {
+        const start = selectionStartRef.current;
+        const end = getCoordinates(e);
+        const rect: EraseRectPayload = { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+
+        // Only erase if the user actually dragged a real box, not a stray click
+        if (Math.abs(rect.x2 - rect.x1) > 0.002 || Math.abs(rect.y2 - rect.y1) > 0.002) {
+          applyEraseRect(rect);
+          onEraseRect(rect);
+        }
+      }
+      selectionStartRef.current = null;
+      setSelectionRect(null);
+      return;
+    }
+
     if (isDrawingRef.current && currentLocalStrokeRef.current.length > 0) {
       allStrokesRef.current.push(currentLocalStrokeRef.current);
       currentLocalStrokeRef.current = [];
@@ -261,6 +357,20 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     }
     isDrawingRef.current = false;
     lastPointRef.current = null;
+  };
+
+  // Broadcast our scroll position when we're the host, so viewers stay on
+  // par with whatever part of the board we're currently writing on.
+  const scrollRafRef = useRef<number | null>(null);
+  const handleContainerScroll = () => {
+    if (!isHost) return;
+    const container = containerRef.current;
+    if (!container) return;
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      onScroll(container.scrollTop);
+    });
   };
 
   const handleClear = () => {
@@ -296,7 +406,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
         {/* Tools Palette */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Pen / Eraser Toggle */}
+          {/* Pen / Eraser / Rect-erase Toggle */}
           <div className="flex items-center bg-dark-surface rounded-xl p-0.5 border border-dark-border">
             <button
               onClick={() => setActiveTool('pen')}
@@ -315,6 +425,15 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
               }`}
             >
               <Eraser className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTool('rect-erase')}
+              title="Drag to select and erase an area"
+              className={`p-1.5 rounded-lg transition-colors ${
+                activeTool === 'rect-erase' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Crop className="w-4 h-4" />
             </button>
           </div>
 
@@ -395,6 +514,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
         {/* Interactive Whiteboard Canvas — scrolls vertically like a document */}
         <div
           ref={containerRef}
+          onScroll={handleContainerScroll}
           className="flex-1 bg-slate-900 rounded-2xl border border-dark-border overflow-y-auto overflow-x-hidden relative shadow-2xl cursor-crosshair touch-none"
         >
           <canvas
@@ -405,6 +525,19 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             onPointerLeave={stopDrawing}
             className="block"
           />
+
+          {/* Rectangle-select eraser overlay (drag to mark an area for deletion) */}
+          {selectionRect && (
+            <div
+              className="absolute border-2 border-dashed border-rose-400 bg-rose-400/10 pointer-events-none"
+              style={{
+                left: selectionRect.x,
+                top: selectionRect.y,
+                width: selectionRect.w,
+                height: selectionRect.h,
+              }}
+            />
+          )}
         </div>
 
         {/* Video Strip (Right on desktop, Bottom on mobile) */}

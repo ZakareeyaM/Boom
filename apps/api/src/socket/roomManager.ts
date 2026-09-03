@@ -414,6 +414,30 @@ export class RoomManager {
       socket.to(meetingCode).emit('whiteboard:clear');
     });
 
+    socket.on('whiteboard:scroll', ({ scrollTop }) => {
+      const meetingCode = this.socketToRoom.get(socket.id);
+      if (!meetingCode) return;
+
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+
+      // Only the host's scroll position drives everyone else's view,
+      // so viewers stay on par with what the host is writing lower down.
+      const sender = room.participants.get(socket.id);
+      const isHost = sender?.isHost || room.hostSocketId === socket.id;
+      if (!isHost) return;
+
+      socket.to(meetingCode).emit('whiteboard:scroll', { scrollTop });
+    });
+
+    socket.on('whiteboard:eraseRect', ({ rect }) => {
+      const meetingCode = this.socketToRoom.get(socket.id);
+      if (!meetingCode) return;
+
+      // Broadcast the erased rectangle so every peer removes the same content
+      socket.to(meetingCode).emit('whiteboard:eraseRect', { rect });
+    });
+
     // Chat Message
     socket.on('chat:send', async ({ message }) => {
       const meetingCode = this.socketToRoom.get(socket.id);

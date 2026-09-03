@@ -70,6 +70,13 @@ export interface WhiteboardState {
   activePresenterName?: string;
 }
 
+export interface EraseRectPayload {
+  x1: number; // Normalized 0..1, relative to full (tall) canvas
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 // Meeting Lifecycle States for Client State Machine
 export type ClientMeetingState =
   | 'IDLE'
@@ -138,6 +145,8 @@ export interface ServerToClientEvents {
   'whiteboard:strokeEnd': (data: { senderId: string }) => void;
   'whiteboard:undo': (data: { senderId: string }) => void;
   'whiteboard:clear': () => void;
+  'whiteboard:scroll': (data: { scrollTop: number }) => void;
+  'whiteboard:eraseRect': (data: { rect: EraseRectPayload }) => void;
   'webrtc:offer': (payload: WebRTCOfferPayload) => void;
   'webrtc:answer': (payload: WebRTCAnswerPayload) => void;
   'webrtc:ice-candidate': (payload: WebRTCIceCandidatePayload) => void;
@@ -170,6 +179,8 @@ export interface ClientToServerEvents {
   'whiteboard:strokeEnd': () => void;
   'whiteboard:undo': () => void;
   'whiteboard:clear': () => void;
+  'whiteboard:scroll': (data: { scrollTop: number }) => void;
+  'whiteboard:eraseRect': (data: { rect: EraseRectPayload }) => void;
   'chat:send': (data: { message: string }) => void;
   'webrtc:offer': (payload: WebRTCOfferPayload) => void;
   'webrtc:answer': (payload: WebRTCAnswerPayload) => void;

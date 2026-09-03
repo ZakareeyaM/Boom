@@ -17,7 +17,7 @@ import {
 import { useMediaStream } from '../hooks/useMediaStream';
 import { useScreenShare } from '../hooks/useScreenShare';
 import { useWebRTC } from '../hooks/useWebRTC';
-import type { Participant, DrawLinePayload } from '@boom/types';
+import type { Participant, DrawLinePayload, EraseRectPayload } from '@boom/types';
 
 export const MeetingRoomPage: React.FC = () => {
   const { meetingId } = useParams<{ meetingId: string }>();
@@ -99,6 +99,18 @@ export const MeetingRoomPage: React.FC = () => {
     }
   }, []);
 
+  const handleRemoteScroll = useCallback((scrollTop: number) => {
+    if (typeof (window as any).__boom_scrollTo === 'function') {
+      (window as any).__boom_scrollTo(scrollTop);
+    }
+  }, []);
+
+  const handleRemoteEraseRect = useCallback((rect: EraseRectPayload) => {
+    if (typeof (window as any).__boom_eraseRect === 'function') {
+      (window as any).__boom_eraseRect(rect);
+    }
+  }, []);
+
   // WebRTC & Signalling Hook
   const {
     meetingState,
@@ -123,6 +135,8 @@ export const MeetingRoomPage: React.FC = () => {
     sendWhiteboardStrokeEnd,
     sendWhiteboardUndo,
     sendWhiteboardClear,
+    sendWhiteboardScroll,
+    sendWhiteboardEraseRect,
   } = useWebRTC({
     meetingCode,
     displayName,
@@ -141,6 +155,8 @@ export const MeetingRoomPage: React.FC = () => {
     onWhiteboardStrokeEnd: handleRemoteStrokeEnd,
     onWhiteboardUndo: handleRemoteUndo,
     onWhiteboardClear: handleRemoteClear,
+    onWhiteboardScroll: handleRemoteScroll,
+    onWhiteboardEraseRect: handleRemoteEraseRect,
   });
 
   // Track unread messages when chat drawer is closed
@@ -231,10 +247,13 @@ export const MeetingRoomPage: React.FC = () => {
             remoteParticipants={remoteParticipants}
             remoteStreams={remoteStreams}
             connectionQuality={connectionQuality}
+            isHost={isHost}
             onDraw={sendWhiteboardDraw}
             onStrokeEnd={sendWhiteboardStrokeEnd}
             onUndo={sendWhiteboardUndo}
             onClear={sendWhiteboardClear}
+            onScroll={sendWhiteboardScroll}
+            onEraseRect={sendWhiteboardEraseRect}
             onClose={() => toggleWhiteboard(false)}
           />
         ) : screenSharer || isSharingScreen ? (

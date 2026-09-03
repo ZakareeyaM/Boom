@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   WhiteboardState,
   DrawLinePayload,
+  EraseRectPayload,
   ScreenShareRequest,
   ClientMeetingState,
   ConnectionQuality,
@@ -28,6 +29,8 @@ interface UseWebRTCProps {
   onWhiteboardStrokeEnd?: (senderId: string) => void;
   onWhiteboardUndo?: () => void;
   onWhiteboardClear?: () => void;
+  onWhiteboardScroll?: (scrollTop: number) => void;
+  onWhiteboardEraseRect?: (rect: EraseRectPayload) => void;
 }
 
 // In local dev Vite on port 3000 connects directly to backend port 5000 to prevent Vite proxy ECONNRESET
@@ -51,6 +54,8 @@ export function useWebRTC({
   onWhiteboardStrokeEnd,
   onWhiteboardUndo,
   onWhiteboardClear,
+  onWhiteboardScroll,
+  onWhiteboardEraseRect,
 }: UseWebRTCProps) {
   const [meetingState, setMeetingState] = useState<ClientMeetingState>('CONNECTING');
   const [meeting, setMeeting] = useState<Meeting | null>(null);
@@ -82,6 +87,8 @@ export function useWebRTC({
   const onWhiteboardStrokeEndRef = useRef(onWhiteboardStrokeEnd);
   const onWhiteboardUndoRef = useRef(onWhiteboardUndo);
   const onWhiteboardClearRef = useRef(onWhiteboardClear);
+  const onWhiteboardScrollRef = useRef(onWhiteboardScroll);
+  const onWhiteboardEraseRectRef = useRef(onWhiteboardEraseRect);
 
   localStreamRef.current = localStream;
   screenStreamRef.current = screenStream;
@@ -95,6 +102,29 @@ export function useWebRTC({
   onWhiteboardStrokeEndRef.current = onWhiteboardStrokeEnd;
   onWhiteboardUndoRef.current = onWhiteboardUndo;
   onWhiteboardClearRef.current = onWhiteboardClear;
+  onWhiteboardScrollRef.current = onWhiteboardScroll;
+  onWhiteboardEraseRectRef.current = onWhiteboardEraseRect;
+
+  // Wait for the local camera/mic stream to be ready before creating an
+  // offer or answer. WebRTC does not automatically renegotiate when tracks
+  // are added to an already-connected peer connection, so if we negotiate
+  // before getUserMedia() resolves, that peer's video (and/or audio) never
+  // reaches the other side even though the connection looks "fine".
+  const waitForLocalStream = useCallback((timeoutMs = 8000) => {
+    return new Promise<void>((resolve) => {
+      if (localStreamRef.current) {
+        resolve();
+        return;
+      }
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (localStreamRef.current || Date.now() - start > timeoutMs) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
+  }, []);
 
   // Create an RTCPeerConnection for a remote peer
   const createPeerConnection = useCallback((remoteSocketId: string) => {
@@ -226,6 +256,10 @@ export function useWebRTC({
       }
       setMeetingState('CONNECTED');
 
+      // Ensure our own camera/mic are ready before negotiating, so the
+      // initial offer actually includes our audio+video tracks.
+      await waitForLocalStream();
+
       for (const p of data.participants) {
         if (p.id !== data.participant.id) {
           try {
@@ -345,9 +379,22 @@ export function useWebRTC({
       onWhiteboardClearRef.current?.();
     });
 
+    socket.on('whiteboard:scroll', (data) => {
+      onWhiteboardScrollRef.current?.(data.scrollTop);
+    });
+
+    socket.on('whiteboard:eraseRect', (data) => {
+      onWhiteboardEraseRectRef.current?.(data.rect);
+    });
+
     // WebRTC Offer Received
     socket.on('webrtc:offer', async (payload) => {
       try {
+        // Make sure our own camera/mic are ready before answering, so the
+        // answer SDP includes our tracks too (otherwise the caller never
+        // sees our video/audio even though the connection succeeds).
+        await waitForLocalStream();
+
         const pc = createPeerConnection(payload.callerSocketId);
         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
 
@@ -516,6 +563,14 @@ export function useWebRTC({
     socketRef.current?.emit('whiteboard:clear');
   }, []);
 
+  const sendWhiteboardScroll = useCallback((scrollTop: number) => {
+    socketRef.current?.emit('whiteboard:scroll', { scrollTop });
+  }, []);
+
+  const sendWhiteboardEraseRect = useCallback((rect: EraseRectPayload) => {
+    socketRef.current?.emit('whiteboard:eraseRect', { rect });
+  }, []);
+
   return {
     meetingState,
     meeting,
@@ -544,5 +599,7 @@ export function useWebRTC({
     sendWhiteboardStrokeEnd,
     sendWhiteboardUndo,
     sendWhiteboardClear,
+    sendWhiteboardScroll,
+    sendWhiteboardEraseRect,
   };
 }
