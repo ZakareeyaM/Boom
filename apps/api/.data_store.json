@@ -242,6 +242,51 @@
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
       "createdAt": "2026-09-01T17:26:17.522Z",
       "updatedAt": "2026-09-01T17:26:17.522Z"
+    },
+    {
+      "id": "guest_d688c863-055d-432e-84fa-2e54a25d4982",
+      "name": "Host",
+      "email": "guest_guest_d688c863-055d-432e-84fa-2e54a25d4982@boom.local",
+      "passwordHash": "guest_nologin",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
+      "createdAt": "2026-09-03T06:20:23.153Z",
+      "updatedAt": "2026-09-03T06:20:23.153Z"
+    },
+    {
+      "id": "guest_e87a52f0-b035-4fbf-8105-f72a07b3466b",
+      "name": "Host",
+      "email": "guest_guest_e87a52f0-b035-4fbf-8105-f72a07b3466b@boom.local",
+      "passwordHash": "guest_nologin",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
+      "createdAt": "2026-09-03T06:20:31.858Z",
+      "updatedAt": "2026-09-03T06:20:31.858Z"
+    },
+    {
+      "id": "guest_dd1f571d-aa08-4674-8780-0f437ce8020d",
+      "name": "Host",
+      "email": "guest_guest_dd1f571d-aa08-4674-8780-0f437ce8020d@boom.local",
+      "passwordHash": "guest_nologin",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
+      "createdAt": "2026-09-03T06:43:44.373Z",
+      "updatedAt": "2026-09-03T06:43:44.373Z"
+    },
+    {
+      "id": "guest_5c064996-615e-40ff-8595-3dfc8ee47790",
+      "name": "Host",
+      "email": "guest_guest_5c064996-615e-40ff-8595-3dfc8ee47790@boom.local",
+      "passwordHash": "guest_nologin",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
+      "createdAt": "2026-09-03T10:54:53.826Z",
+      "updatedAt": "2026-09-03T10:54:53.826Z"
+    },
+    {
+      "id": "guest_a442eedf-baa1-4c08-8090-ed567f3da8f3",
+      "name": "Host",
+      "email": "guest_guest_a442eedf-baa1-4c08-8090-ed567f3da8f3@boom.local",
+      "passwordHash": "guest_nologin",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
+      "createdAt": "2026-09-03T17:45:30.707Z",
+      "updatedAt": "2026-09-03T17:45:30.707Z"
     }
   ],
   "meetings": [
@@ -346,6 +391,47 @@
       "status": "ENDED",
       "createdAt": "2026-09-01T17:26:17.529Z",
       "endedAt": "2026-09-01T17:27:45.540Z"
+    },
+    {
+      "id": "meet_11ae0e90-8661-4b64-ad89-66ea5f2446ad",
+      "meetingCode": "JD7Y-B4M7",
+      "hostId": "guest_d688c863-055d-432e-84fa-2e54a25d4982",
+      "title": "Quick Meeting",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-03T06:20:23.176Z"
+    },
+    {
+      "id": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+      "meetingCode": "PDV5-7DE3",
+      "hostId": "guest_e87a52f0-b035-4fbf-8105-f72a07b3466b",
+      "title": "Quick Meeting",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-03T06:20:31.877Z"
+    },
+    {
+      "id": "meet_d44a118d-8eb3-4997-9b61-17ea08b20f82",
+      "meetingCode": "S3YT-TQN3",
+      "hostId": "guest_dd1f571d-aa08-4674-8780-0f437ce8020d",
+      "title": "Quick Meeting",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-03T06:43:44.380Z"
+    },
+    {
+      "id": "meet_636f2ecd-5dd4-4489-949b-10144a621d1b",
+      "meetingCode": "P9V3-6FWR",
+      "hostId": "guest_5c064996-615e-40ff-8595-3dfc8ee47790",
+      "title": "Quick Meeting",
+      "status": "ENDED",
+      "createdAt": "2026-09-03T10:54:53.835Z",
+      "endedAt": "2026-09-03T10:57:25.180Z"
+    },
+    {
+      "id": "meet_c0e6ae02-82b1-4b1e-9f93-1c46c0b63d07",
+      "meetingCode": "7D7W-HZSE",
+      "hostId": "guest_a442eedf-baa1-4c08-8090-ed567f3da8f3",
+      "title": "Quick Meeting",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-03T17:45:30.714Z"
     }
   ],
   "participants": [
@@ -10068,7 +10154,167 @@
       "isHost": false,
       "joinedAt": "2026-09-01T17:26:29.741Z",
       "leftAt": "2026-09-01T17:27:04.974Z"
+    },
+    {
+      "id": "1t80e73-jBwNza1YAAAC",
+      "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+      "userId": null,
+      "displayName": "Zak",
+      "isHost": true,
+      "joinedAt": "2026-09-03T06:20:41.257Z",
+      "leftAt": "2026-09-03T06:24:41.825Z"
+    },
+    {
+      "id": "EQ3aa29YOoI3Re3PAAAF",
+      "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+      "userId": null,
+      "displayName": "DEjan",
+      "isHost": false,
+      "joinedAt": "2026-09-03T06:20:49.052Z",
+      "leftAt": "2026-09-03T06:21:24.616Z"
+    },
+    {
+      "id": "tuYUsd3iWW6RMH97AAAI",
+      "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+      "userId": null,
+      "displayName": "Benjamin",
+      "isHost": false,
+      "joinedAt": "2026-09-03T06:21:51.364Z",
+      "leftAt": "2026-09-03T06:24:41.760Z"
+    },
+    {
+      "id": "qjef3C0hzPaG8GquAAAL",
+      "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+      "userId": null,
+      "displayName": "Benjamin",
+      "isHost": true,
+      "joinedAt": "2026-09-03T06:24:52.571Z",
+      "leftAt": "2026-09-03T06:25:02.146Z"
+    },
+    {
+      "id": "ZpHbEA5SF137otU6AAAC",
+      "meetingId": "meet_d44a118d-8eb3-4997-9b61-17ea08b20f82",
+      "userId": null,
+      "displayName": "Zak",
+      "isHost": true,
+      "joinedAt": "2026-09-03T06:43:49.647Z",
+      "leftAt": "2026-09-03T06:45:25.413Z"
+    },
+    {
+      "id": "9Xlr7BBNjEWbXosMAAAF",
+      "meetingId": "meet_d44a118d-8eb3-4997-9b61-17ea08b20f82",
+      "userId": null,
+      "displayName": "Jon",
+      "isHost": false,
+      "joinedAt": "2026-09-03T06:44:04.600Z",
+      "leftAt": "2026-09-03T06:45:23.855Z"
+    },
+    {
+      "id": "wfq3Xjbl0thA70OzAAAC",
+      "meetingId": "meet_636f2ecd-5dd4-4489-949b-10144a621d1b",
+      "userId": null,
+      "displayName": "Zak",
+      "isHost": true,
+      "joinedAt": "2026-09-03T10:55:04.967Z",
+      "leftAt": "2026-09-03T10:57:25.184Z"
+    },
+    {
+      "id": "XPlb3yY0QrlIBEj6AAAF",
+      "meetingId": "meet_636f2ecd-5dd4-4489-949b-10144a621d1b",
+      "userId": null,
+      "displayName": "Jason X",
+      "isHost": false,
+      "joinedAt": "2026-09-03T10:55:11.854Z",
+      "leftAt": "2026-09-03T10:57:25.189Z"
+    },
+    {
+      "id": "ou7V8_PHrRf27wgBAAAC",
+      "meetingId": "meet_c0e6ae02-82b1-4b1e-9f93-1c46c0b63d07",
+      "userId": null,
+      "displayName": "Zak",
+      "isHost": true,
+      "joinedAt": "2026-09-03T17:45:34.274Z",
+      "leftAt": "2026-09-03T17:48:26.235Z"
+    },
+    {
+      "id": "14Ej8RhuIvtqS0O-AAAF",
+      "meetingId": "meet_c0e6ae02-82b1-4b1e-9f93-1c46c0b63d07",
+      "userId": null,
+      "displayName": "Johnson",
+      "isHost": false,
+      "joinedAt": "2026-09-03T17:45:44.622Z",
+      "leftAt": "2026-09-03T17:48:11.435Z"
+    },
+    {
+      "id": "TXJr6sPDh4NC-f_KAAAH",
+      "meetingId": "meet_c0e6ae02-82b1-4b1e-9f93-1c46c0b63d07",
+      "userId": null,
+      "displayName": "Zak",
+      "isHost": true,
+      "joinedAt": "2026-09-03T17:48:30.580Z",
+      "leftAt": "2026-09-03T17:48:31.975Z"
     }
   ],
-  "messages": {}
+  "messages": {
+    "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f": [
+      {
+        "id": "msg_7855059d-e63d-4394-b33a-b937371853e9",
+        "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+        "senderId": "1t80e73-jBwNza1YAAAC",
+        "senderName": "Zak",
+        "isHost": true,
+        "message": "hello",
+        "createdAt": "2026-09-03T06:23:11.113Z"
+      },
+      {
+        "id": "msg_7c652a2c-a9d9-4137-aa99-c80e73e5fdd9",
+        "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+        "senderId": "tuYUsd3iWW6RMH97AAAI",
+        "senderName": "Benjamin",
+        "isHost": false,
+        "message": "how ar eyou",
+        "createdAt": "2026-09-03T06:23:16.942Z"
+      },
+      {
+        "id": "msg_5181797a-aa99-40c2-b7fd-93150ff1f392",
+        "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+        "senderId": "tuYUsd3iWW6RMH97AAAI",
+        "senderName": "Benjamin",
+        "isHost": false,
+        "message": "whats good",
+        "createdAt": "2026-09-03T06:23:20.142Z"
+      },
+      {
+        "id": "msg_b76a5be2-f7dd-4c09-8537-b8939a040f5b",
+        "meetingId": "meet_b42bf602-4fb8-4a7b-9603-2288fb92df5f",
+        "senderId": "1t80e73-jBwNza1YAAAC",
+        "senderName": "Zak",
+        "isHost": true,
+        "message": "nothing  much and yourself",
+        "createdAt": "2026-09-03T06:23:26.862Z"
+      }
+    ],
+    "meet_636f2ecd-5dd4-4489-949b-10144a621d1b": [
+      {
+        "id": "msg_0c7650fc-8c0b-445e-ab76-e56167b87958",
+        "meetingId": "meet_636f2ecd-5dd4-4489-949b-10144a621d1b",
+        "senderId": "XPlb3yY0QrlIBEj6AAAF",
+        "senderName": "Jason X",
+        "isHost": false,
+        "message": "vbfng",
+        "createdAt": "2026-09-03T10:56:53.229Z"
+      }
+    ],
+    "meet_c0e6ae02-82b1-4b1e-9f93-1c46c0b63d07": [
+      {
+        "id": "msg_b60ff937-1a41-4adc-9d86-358bf41575d0",
+        "meetingId": "meet_c0e6ae02-82b1-4b1e-9f93-1c46c0b63d07",
+        "senderId": "14Ej8RhuIvtqS0O-AAAF",
+        "senderName": "Johnson",
+        "isHost": false,
+        "message": "hello",
+        "createdAt": "2026-09-03T17:46:23.049Z"
+      }
+    ]
+  }
 }

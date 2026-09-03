@@ -108,11 +108,17 @@ export interface WebRTCAnswerPayload {
 
 export interface WebRTCIceCandidatePayload {
   targetSocketId: string;
+  senderSocketId?: string;
   candidate: RTCIceCandidateInit;
 }
 
 // Screen Share Permission Types
 export interface ScreenShareRequest {
+  requesterSocketId: string;
+  requesterName: string;
+}
+
+export interface WhiteboardEditRequest {
   requesterSocketId: string;
   requesterName: string;
 }
@@ -140,6 +146,9 @@ export interface ServerToClientEvents {
   // Viewer receives approval or denial from host
   'screenShare:permissionGranted': () => void;
   'screenShare:permissionDenied': (data: { reason: string }) => void;
+  'whiteboard:requested': (data: WhiteboardEditRequest) => void;
+  'whiteboard:permissionGranted': () => void;
+  'whiteboard:permissionDenied': (data: { reason: string }) => void;
   'whiteboard:toggle': (state: WhiteboardState) => void;
   'whiteboard:draw': (data: { line: DrawLinePayload; senderId: string }) => void;
   'whiteboard:strokeEnd': (data: { senderId: string }) => void;
@@ -174,6 +183,8 @@ export interface ClientToServerEvents {
   'screenShare:requestResponse': (data: { requesterSocketId: string; approved: boolean }) => void;
   'screenShare:start': () => void;
   'screenShare:stop': () => void;
+  'whiteboard:request': () => void;
+  'whiteboard:requestResponse': (data: { requesterSocketId: string; approved: boolean }) => void;
   'whiteboard:toggle': (data: { isOpen: boolean }) => void;
   'whiteboard:draw': (data: { line: DrawLinePayload }) => void;
   'whiteboard:strokeEnd': () => void;

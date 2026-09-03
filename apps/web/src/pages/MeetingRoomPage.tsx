@@ -14,6 +14,8 @@ import {
   EndMeetingModal,
   LeaveMeetingModal,
 } from '../components/meeting/HostActionModals';
+import { ScreenShareRequestModal } from '../components/meeting/ScreenShareRequestModal';
+import { WhiteboardRequestModal } from '../components/meeting/WhiteboardRequestModal';
 import { useMediaStream } from '../hooks/useMediaStream';
 import { useScreenShare } from '../hooks/useScreenShare';
 import { useWebRTC } from '../hooks/useWebRTC';
@@ -130,6 +132,14 @@ export const MeetingRoomPage: React.FC = () => {
     leaveMeeting,
     broadcastScreenShareStart,
     broadcastScreenShareStop,
+    pendingScreenShareRequest,
+    screenSharePermission,
+    respondToScreenShareRequest,
+    requestScreenSharePermission,
+    pendingWhiteboardRequest,
+    whiteboardPermission,
+    requestWhiteboardPermission,
+    respondToWhiteboardRequest,
     toggleWhiteboard,
     sendWhiteboardDraw,
     sendWhiteboardStrokeEnd,
@@ -159,6 +169,9 @@ export const MeetingRoomPage: React.FC = () => {
     onWhiteboardEraseRect: handleRemoteEraseRect,
   });
 
+  const isHost = localParticipant?.isHost || false;
+  const canEditWhiteboard = isHost || whiteboardPermission === 'granted';
+
   // Track unread messages when chat drawer is closed
   const prevMessagesCount = React.useRef(messages.length);
   useEffect(() => {
@@ -185,15 +198,28 @@ export const MeetingRoomPage: React.FC = () => {
     if (isSharingScreen) {
       stopScreenShare();
       broadcastScreenShareStop();
-    } else {
-      const stream = await startScreenShare();
-      if (stream) {
-        broadcastScreenShareStart();
+      return;
+    }
+
+    // The host can start sharing immediately. Other participants must first
+    // ask the host for permission. The actual getDisplayMedia() call stays
+    // inside this click handler because browsers require a user gesture.
+    if (!isHost && screenSharePermission !== 'granted') {
+      if (screenSharePermission !== 'pending') {
+        // Request permission only; do not call getDisplayMedia yet.
+        requestScreenSharePermission();
       }
+      return;
+    }
+
+    const stream = await startScreenShare();
+    if (stream) {
+      broadcastScreenShareStart();
     }
   };
 
   const handleToggleWhiteboard = () => {
+    if (!isHost) return;
     toggleWhiteboard(!whiteboardState.isOpen);
   };
 
@@ -223,7 +249,6 @@ export const MeetingRoomPage: React.FC = () => {
     );
   }
 
-  const isHost = localParticipant?.isHost || false;
   const remoteParticipants = participants.filter((p) => p.id !== localParticipant?.id);
 
   return (
@@ -248,6 +273,9 @@ export const MeetingRoomPage: React.FC = () => {
             remoteStreams={remoteStreams}
             connectionQuality={connectionQuality}
             isHost={isHost}
+            canEdit={canEditWhiteboard}
+            whiteboardPermission={whiteboardPermission}
+            onRequestEdit={requestWhiteboardPermission}
             onDraw={sendWhiteboardDraw}
             onStrokeEnd={sendWhiteboardStrokeEnd}
             onUndo={sendWhiteboardUndo}
@@ -301,6 +329,7 @@ export const MeetingRoomPage: React.FC = () => {
         isChatOpen={isChatOpen}
         isParticipantsOpen={isParticipantsOpen}
         isHost={isHost}
+        screenSharePermission={screenSharePermission}
         onToggleAudio={toggleAudio}
         onToggleVideo={toggleVideo}
         onToggleScreenShare={handleToggleScreenShare}
@@ -343,6 +372,31 @@ export const MeetingRoomPage: React.FC = () => {
         onSelectAudioDevice={switchAudioDevice}
         onSelectVideoDevice={switchVideoDevice}
       />
+
+      {/* Permission Requests — only the host can receive/answer these */}
+      {isHost && pendingScreenShareRequest && (
+        <ScreenShareRequestModal
+          requesterName={pendingScreenShareRequest.requesterName}
+          onApprove={() =>
+            respondToScreenShareRequest(pendingScreenShareRequest.requesterSocketId, true)
+          }
+          onDeny={() =>
+            respondToScreenShareRequest(pendingScreenShareRequest.requesterSocketId, false)
+          }
+        />
+      )}
+
+      {isHost && pendingWhiteboardRequest && (
+        <WhiteboardRequestModal
+          requesterName={pendingWhiteboardRequest.requesterName}
+          onApprove={() =>
+            respondToWhiteboardRequest(pendingWhiteboardRequest.requesterSocketId, true)
+          }
+          onDeny={() =>
+            respondToWhiteboardRequest(pendingWhiteboardRequest.requesterSocketId, false)
+          }
+        />
+      )}
 
       {/* Host Modals */}
       <RemoveParticipantModal

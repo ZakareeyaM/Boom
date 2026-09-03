@@ -22,6 +22,8 @@ interface ActiveRoom {
   hostUserId: string;
   hostSocketId?: string;
   screenSharerSocketId?: string;
+  screenShareAllowedUsers: Set<string>;
+  whiteboardEditors: Set<string>;
   whiteboardState: WhiteboardState;
 }
 
@@ -63,6 +65,8 @@ export class RoomManager {
             participants: new Map(),
             hostUserId: meeting.hostId,
             whiteboardState: { isOpen: false },
+            screenShareAllowedUsers: new Set(),
+            whiteboardEditors: new Set(),
           };
           this.rooms.set(normalizedCode, room);
         }
@@ -300,9 +304,14 @@ export class RoomManager {
       const isHost = responder?.isHost || room.hostSocketId === socket.id;
       if (!isHost) return;
 
+      const requester = room.participants.get(requesterSocketId);
+      if (!requester || requester.isHost) return;
+
       if (approved) {
+        room.screenShareAllowedUsers.add(requesterSocketId);
         this.io.to(requesterSocketId).emit('screenShare:permissionGranted');
       } else {
+        room.screenShareAllowedUsers.delete(requesterSocketId);
         this.io.to(requesterSocketId).emit('screenShare:permissionDenied', {
           reason: 'The host has declined your screen share request.',
         });
@@ -319,6 +328,14 @@ export class RoomManager {
 
       const participant = room.participants.get(socket.id);
       if (!participant) return;
+
+      const isHost = participant.isHost || room.hostSocketId === socket.id;
+      const hasScreenSharePermission = isHost || room.screenShareAllowedUsers.has(socket.id);
+      if (!hasScreenSharePermission) {
+        return socket.emit('screenShare:permissionDenied', {
+          reason: 'The host has not granted you permission to share your screen.',
+        });
+      }
 
       // If another user was sharing, stop previous
       if (room.screenSharerSocketId && room.screenSharerSocketId !== socket.id) {
@@ -358,6 +375,66 @@ export class RoomManager {
       }
     });
 
+    // Whiteboard Permission: viewer requests editing access from host
+    socket.on('whiteboard:request', () => {
+      const meetingCode = this.socketToRoom.get(socket.id);
+      if (!meetingCode) return;
+
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+
+      const requester = room.participants.get(socket.id);
+      if (!requester) return;
+
+      const isHost = requester.isHost || room.hostSocketId === socket.id;
+      if (isHost) {
+        socket.emit('whiteboard:permissionGranted');
+        return;
+      }
+
+      const hostSocketId = room.hostSocketId;
+      if (!hostSocketId) {
+        socket.emit('whiteboard:permissionDenied', { reason: 'The host is not available.' });
+        return;
+      }
+
+      if (room.whiteboardEditors.has(socket.id)) {
+        socket.emit('whiteboard:permissionGranted');
+        return;
+      }
+
+      this.io.to(hostSocketId).emit('whiteboard:requested', {
+        requesterSocketId: socket.id,
+        requesterName: requester.displayName,
+      });
+    });
+
+    // Host responds to a whiteboard editing request
+    socket.on('whiteboard:requestResponse', ({ requesterSocketId, approved }) => {
+      const meetingCode = this.socketToRoom.get(socket.id);
+      if (!meetingCode) return;
+
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+
+      const responder = room.participants.get(socket.id);
+      const isHost = responder?.isHost || room.hostSocketId === socket.id;
+      if (!isHost) return;
+
+      const requester = room.participants.get(requesterSocketId);
+      if (!requester || requester.isHost) return;
+
+      if (approved) {
+        room.whiteboardEditors.add(requesterSocketId);
+        this.io.to(requesterSocketId).emit('whiteboard:permissionGranted');
+      } else {
+        room.whiteboardEditors.delete(requesterSocketId);
+        this.io.to(requesterSocketId).emit('whiteboard:permissionDenied', {
+          reason: 'The host has declined your whiteboard editing request.',
+        });
+      }
+    });
+
     // Whiteboard Actions
     socket.on('whiteboard:toggle', ({ isOpen }) => {
       const meetingCode = this.socketToRoom.get(socket.id);
@@ -368,6 +445,11 @@ export class RoomManager {
 
       const participant = room.participants.get(socket.id);
       if (!participant) return;
+
+      const isHost = participant.isHost || room.hostSocketId === socket.id;
+      if (!isHost) {
+        return socket.emit('error', { code: 'FORBIDDEN', message: 'Only the host can open or close the whiteboard.' });
+      }
 
       room.whiteboardState = {
         isOpen,
@@ -382,6 +464,12 @@ export class RoomManager {
       const meetingCode = this.socketToRoom.get(socket.id);
       if (!meetingCode) return;
 
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+      const participant = room.participants.get(socket.id);
+      const canEdit = !!participant && (participant.isHost || room.hostSocketId === socket.id || room.whiteboardEditors.has(socket.id));
+      if (!canEdit) return;
+
       // Broadcast draw event to everyone else in the room
       socket.to(meetingCode).emit('whiteboard:draw', {
         line,
@@ -393,6 +481,12 @@ export class RoomManager {
       const meetingCode = this.socketToRoom.get(socket.id);
       if (!meetingCode) return;
 
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+      const participant = room.participants.get(socket.id);
+      const canEdit = !!participant && (participant.isHost || room.hostSocketId === socket.id || room.whiteboardEditors.has(socket.id));
+      if (!canEdit) return;
+
       // Tell everyone else this sender's in-progress stroke is complete,
       // so their local undo history stays in sync with the sender's.
       socket.to(meetingCode).emit('whiteboard:strokeEnd', { senderId: socket.id });
@@ -402,6 +496,12 @@ export class RoomManager {
       const meetingCode = this.socketToRoom.get(socket.id);
       if (!meetingCode) return;
 
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+      const participant = room.participants.get(socket.id);
+      const canEdit = !!participant && (participant.isHost || room.hostSocketId === socket.id || room.whiteboardEditors.has(socket.id));
+      if (!canEdit) return;
+
       // Broadcast undo to all other participants so they remove the same stroke
       socket.to(meetingCode).emit('whiteboard:undo', { senderId: socket.id });
     });
@@ -409,6 +509,12 @@ export class RoomManager {
     socket.on('whiteboard:clear', () => {
       const meetingCode = this.socketToRoom.get(socket.id);
       if (!meetingCode) return;
+
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+      const participant = room.participants.get(socket.id);
+      const canEdit = !!participant && (participant.isHost || room.hostSocketId === socket.id || room.whiteboardEditors.has(socket.id));
+      if (!canEdit) return;
 
       // Broadcast clear to all other participants (not back to sender)
       socket.to(meetingCode).emit('whiteboard:clear');
@@ -433,6 +539,12 @@ export class RoomManager {
     socket.on('whiteboard:eraseRect', ({ rect }) => {
       const meetingCode = this.socketToRoom.get(socket.id);
       if (!meetingCode) return;
+
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+      const participant = room.participants.get(socket.id);
+      const canEdit = !!participant && (participant.isHost || room.hostSocketId === socket.id || room.whiteboardEditors.has(socket.id));
+      if (!canEdit) return;
 
       // Broadcast the erased rectangle so every peer removes the same content
       socket.to(meetingCode).emit('whiteboard:eraseRect', { rect });
@@ -496,6 +608,7 @@ export class RoomManager {
       // Forward ICE candidate to target
       this.io.to(payload.targetSocketId).emit('webrtc:ice-candidate', {
         targetSocketId: payload.targetSocketId,
+        senderSocketId: socket.id,
         candidate: payload.candidate,
       });
     });
@@ -527,6 +640,8 @@ export class RoomManager {
         }
 
         room.participants.delete(socket.id);
+        room.screenShareAllowedUsers.delete(socket.id);
+        room.whiteboardEditors.delete(socket.id);
         this.db.markParticipantLeft(socket.id);
 
         this.io.to(meetingCode).emit('participant:left', {

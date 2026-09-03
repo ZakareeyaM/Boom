@@ -8,6 +8,10 @@ import {
   X,
   RotateCcw,
   Presentation,
+  PanelRightClose,
+  PanelRightOpen,
+  ShieldCheck,
+  Clock3,
 } from 'lucide-react';
 import { Button } from '../common/Button';
 import { ParticipantTile } from './ParticipantTile';
@@ -21,6 +25,9 @@ interface WhiteboardStageProps {
   remoteStreams: Map<string, MediaStream>;
   connectionQuality: ConnectionQuality;
   isHost: boolean;
+  canEdit: boolean;
+  whiteboardPermission: 'idle' | 'pending' | 'granted' | 'denied';
+  onRequestEdit: () => void;
   onDraw: (line: DrawLinePayload) => void;
   onStrokeEnd: () => void;
   onUndo: () => void;
@@ -60,6 +67,9 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   remoteStreams,
   connectionQuality,
   isHost,
+  canEdit,
+  whiteboardPermission,
+  onRequestEdit,
   onDraw,
   onStrokeEnd,
   onUndo,
@@ -76,6 +86,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'rect-erase'>('pen');
   const [selectedColor, setSelectedColor] = useState<string>('#ffffff');
   const [selectedSize, setSelectedSize] = useState<number>(5);
+  const [showVideoStrip, setShowVideoStrip] = useState(true);
   // Live rectangle currently being dragged out by the rect-erase tool (screen px, for the overlay only)
   const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -191,11 +202,11 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   );
 
   const handleUndo = useCallback(() => {
-    if (allStrokesRef.current.length === 0) return;
+    if (!canEdit || allStrokesRef.current.length === 0) return;
     allStrokesRef.current.pop();
     redrawAll();
     onUndo();
-  }, [redrawAll, onUndo]);
+  }, [canEdit, redrawAll, onUndo]);
 
   // Bridge functions so MeetingRoomPage (which owns the socket connection)
   // can feed remote events into this component without prop-drilling through
@@ -271,6 +282,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   };
 
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canEdit) return;
     const point = getCoordinates(e);
 
     if (activeTool === 'rect-erase') {
@@ -287,6 +299,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   };
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canEdit) return;
     if (activeTool === 'rect-erase') {
       if (!selectionStartRef.current) return;
       const container = containerRef.current;
@@ -333,6 +346,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   };
 
   const stopDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canEdit) return;
     if (activeTool === 'rect-erase') {
       if (selectionStartRef.current) {
         const start = selectionStartRef.current;
@@ -374,6 +388,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   };
 
   const handleClear = () => {
+    if (!canEdit) return;
     allStrokesRef.current = [];
     remoteBuffersRef.current.clear();
     currentLocalStrokeRef.current = [];
@@ -406,6 +421,26 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
         {/* Tools Palette */}
         <div className="flex items-center gap-2 flex-wrap">
+          {!canEdit ? (
+            <div className="flex items-center gap-2">
+              {whiteboardPermission === 'pending' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-semibold">
+                  <Clock3 className="w-3.5 h-3.5" /> Waiting for host approval
+                </span>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={onRequestEdit}
+                  leftIcon={<Pen className="w-4 h-4" />}
+                  className="py-1.5 px-3 text-xs"
+                >
+                  {whiteboardPermission === 'denied' ? 'Request Again' : 'Request Editing Access'}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
           {/* Pen / Eraser / Rect-erase Toggle */}
           <div className="flex items-center bg-dark-surface rounded-xl p-0.5 border border-dark-border">
             <button
@@ -496,16 +531,37 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             <Download className="w-4 h-4" />
           </button>
 
-          {/* Close Whiteboard */}
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={onClose}
-            leftIcon={<X className="w-4 h-4" />}
-            className="py-1.5 px-3 text-xs"
-          >
-            Close
-          </Button>
+          {/* Only the host can close the whiteboard */}
+          {isHost && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={onClose}
+              leftIcon={<X className="w-4 h-4" />}
+              className="py-1.5 px-3 text-xs"
+            >
+              Close
+            </Button>
+          )}
+            </>
+          )}
+
+          {canEdit && !isHost && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5" /> Editing allowed by host
+            </span>
+          )}
+
+          {isHost && (
+            <button
+              onClick={() => setShowVideoStrip((prev) => !prev)}
+              title={showVideoStrip ? 'Minimize participant videos' : 'Show participant videos'}
+              aria-label={showVideoStrip ? 'Minimize participant videos' : 'Show participant videos'}
+              className="p-2 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white transition-colors"
+            >
+              {showVideoStrip ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+            </button>
+          )}
         </div>
       </div>
 
@@ -515,7 +571,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
         <div
           ref={containerRef}
           onScroll={handleContainerScroll}
-          className="flex-1 bg-slate-900 rounded-2xl border border-dark-border overflow-y-auto overflow-x-hidden relative shadow-2xl cursor-crosshair touch-none"
+          className={`flex-1 bg-slate-900 rounded-2xl border border-dark-border overflow-y-auto overflow-x-hidden relative shadow-2xl touch-none ${canEdit ? 'cursor-crosshair' : 'cursor-default'}`}
         >
           <canvas
             ref={canvasRef}
@@ -523,7 +579,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             onPointerMove={draw}
             onPointerUp={stopDrawing}
             onPointerLeave={stopDrawing}
-            className="block"
+            className={`block ${canEdit ? '' : 'pointer-events-none'}`}
           />
 
           {/* Rectangle-select eraser overlay (drag to mark an area for deletion) */}
@@ -541,6 +597,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
         </div>
 
         {/* Video Strip (Right on desktop, Bottom on mobile) */}
+        {showVideoStrip && (
         <div className="lg:w-64 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-y-auto min-h-[120px] lg:min-h-0">
           {/* Local participant tile */}
           <div className="w-44 lg:w-full aspect-video shrink-0">
@@ -567,6 +624,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import type {
   DrawLinePayload,
   EraseRectPayload,
   ScreenShareRequest,
+  WhiteboardEditRequest,
   ClientMeetingState,
   ConnectionQuality,
   ServerToClientEvents,
@@ -70,6 +71,8 @@ export function useWebRTC({
   // Screen share permission states
   const [pendingScreenShareRequest, setPendingScreenShareRequest] = useState<ScreenShareRequest | null>(null);
   const [screenSharePermission, setScreenSharePermission] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
+  const [pendingWhiteboardRequest, setPendingWhiteboardRequest] = useState<WhiteboardEditRequest | null>(null);
+  const [whiteboardPermission, setWhiteboardPermission] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
 
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -152,6 +155,7 @@ export function useWebRTC({
       if (event.candidate && socketRef.current) {
         socketRef.current.emit('webrtc:ice-candidate', {
           targetSocketId: remoteSocketId,
+          senderSocketId: socketRef.current.id || undefined,
           candidate: event.candidate.toJSON(),
         });
       }
@@ -358,6 +362,21 @@ export function useWebRTC({
       setScreenSharePermission('denied');
     });
 
+    // Permission: Host receives a whiteboard editing request
+    socket.on('whiteboard:requested', (data) => {
+      setPendingWhiteboardRequest(data);
+    });
+
+    // Viewer receives whiteboard editing approval
+    socket.on('whiteboard:permissionGranted', () => {
+      setWhiteboardPermission('granted');
+    });
+
+    // Viewer receives whiteboard editing denial
+    socket.on('whiteboard:permissionDenied', () => {
+      setWhiteboardPermission('denied');
+    });
+
     // Whiteboard Events
     socket.on('whiteboard:toggle', (state) => {
       setWhiteboardState(state);
@@ -426,7 +445,8 @@ export function useWebRTC({
     // ICE Candidate
     socket.on('webrtc:ice-candidate', async (payload) => {
       try {
-        const pc = peerConnections.current.get(payload.targetSocketId);
+        const remoteSocketId = payload.senderSocketId || payload.targetSocketId;
+        const pc = peerConnections.current.get(remoteSocketId);
         if (pc && payload.candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
         }
@@ -542,6 +562,21 @@ export function useWebRTC({
     setScreenSharePermission('idle');
   }, []);
 
+  // Whiteboard Permission Actions
+  const requestWhiteboardPermission = useCallback(() => {
+    setWhiteboardPermission('pending');
+    socketRef.current?.emit('whiteboard:request');
+  }, []);
+
+  const respondToWhiteboardRequest = useCallback((requesterSocketId: string, approved: boolean) => {
+    socketRef.current?.emit('whiteboard:requestResponse', { requesterSocketId, approved });
+    setPendingWhiteboardRequest(null);
+  }, []);
+
+  const resetWhiteboardPermission = useCallback(() => {
+    setWhiteboardPermission('idle');
+  }, []);
+
   // Whiteboard Actions
   const toggleWhiteboard = useCallback((isOpen: boolean) => {
     socketRef.current?.emit('whiteboard:toggle', { isOpen });
@@ -584,6 +619,8 @@ export function useWebRTC({
     errorMessage,
     pendingScreenShareRequest,
     screenSharePermission,
+    pendingWhiteboardRequest,
+    whiteboardPermission,
     sendMessage,
     muteParticipant,
     removeParticipant,
@@ -594,6 +631,9 @@ export function useWebRTC({
     requestScreenSharePermission,
     respondToScreenShareRequest,
     resetScreenSharePermission,
+    requestWhiteboardPermission,
+    respondToWhiteboardRequest,
+    resetWhiteboardPermission,
     toggleWhiteboard,
     sendWhiteboardDraw,
     sendWhiteboardStrokeEnd,

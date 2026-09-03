@@ -24,6 +24,7 @@ interface ControlBarProps {
   isChatOpen: boolean;
   isParticipantsOpen: boolean;
   isHost: boolean;
+  screenSharePermission: 'idle' | 'pending' | 'granted' | 'denied';
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onToggleScreenShare: () => void;
@@ -45,6 +46,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   isChatOpen,
   isParticipantsOpen,
   isHost,
+  screenSharePermission,
   onToggleAudio,
   onToggleVideo,
   onToggleScreenShare,
@@ -116,12 +118,36 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         {/* Screen Share Button */}
         <button
           onClick={onToggleScreenShare}
-          aria-label={isSharingScreen ? 'Stop sharing screen' : 'Share screen'}
-          title={isSharingScreen ? 'Stop sharing screen' : 'Share screen'}
+          aria-label={
+            isSharingScreen
+              ? 'Stop sharing screen'
+              : isHost
+                ? 'Share screen'
+                : screenSharePermission === 'pending'
+                  ? 'Waiting for host approval'
+                  : screenSharePermission === 'granted'
+                    ? 'Share screen (approved)'
+                    : 'Request permission to share screen'
+          }
+          title={
+            isSharingScreen
+              ? 'Stop sharing screen'
+              : isHost
+                ? 'Share screen'
+                : screenSharePermission === 'pending'
+                  ? 'Waiting for host approval'
+                  : screenSharePermission === 'granted'
+                    ? 'Host approved screen sharing'
+                    : 'Request permission to share screen'
+          }
           className={`p-3 rounded-xl border transition-all flex items-center justify-center ${
             isSharingScreen
               ? 'bg-brand-600 text-white border-brand-500 shadow-lg shadow-brand-500/30'
-              : 'bg-dark-card text-slate-300 hover:text-white hover:bg-dark-hover border-dark-border'
+              : !isHost && screenSharePermission === 'pending'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                : !isHost && screenSharePermission === 'granted'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-dark-card text-slate-300 hover:text-white hover:bg-dark-hover border-dark-border'
           }`}
         >
           <ScreenShare className="w-5 h-5" />
