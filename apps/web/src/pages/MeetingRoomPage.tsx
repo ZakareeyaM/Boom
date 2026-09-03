@@ -66,7 +66,7 @@ export const MeetingRoomPage: React.FC = () => {
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
 
   // Remote Whiteboard Draw Handlers
-  const handleRemoteDraw = useCallback((line: DrawLinePayload) => {
+  const handleRemoteDraw = useCallback((line: DrawLinePayload, senderId: string) => {
     if (typeof (window as any).__boom_drawSegment === 'function') {
       (window as any).__boom_drawSegment(
         line.prevX,
@@ -75,8 +75,21 @@ export const MeetingRoomPage: React.FC = () => {
         line.currY,
         line.color,
         line.size,
-        line.isEraser
+        line.isEraser,
+        senderId
       );
+    }
+  }, []);
+
+  const handleRemoteStrokeEnd = useCallback((senderId: string) => {
+    if (typeof (window as any).__boom_strokeEnd === 'function') {
+      (window as any).__boom_strokeEnd(senderId);
+    }
+  }, []);
+
+  const handleRemoteUndo = useCallback(() => {
+    if (typeof (window as any).__boom_undo === 'function') {
+      (window as any).__boom_undo();
     }
   }, []);
 
@@ -107,6 +120,8 @@ export const MeetingRoomPage: React.FC = () => {
     broadcastScreenShareStop,
     toggleWhiteboard,
     sendWhiteboardDraw,
+    sendWhiteboardStrokeEnd,
+    sendWhiteboardUndo,
     sendWhiteboardClear,
   } = useWebRTC({
     meetingCode,
@@ -123,6 +138,8 @@ export const MeetingRoomPage: React.FC = () => {
       navigate('/ended', { state: { reason } });
     },
     onWhiteboardDraw: handleRemoteDraw,
+    onWhiteboardStrokeEnd: handleRemoteStrokeEnd,
+    onWhiteboardUndo: handleRemoteUndo,
     onWhiteboardClear: handleRemoteClear,
   });
 
@@ -215,6 +232,8 @@ export const MeetingRoomPage: React.FC = () => {
             remoteStreams={remoteStreams}
             connectionQuality={connectionQuality}
             onDraw={sendWhiteboardDraw}
+            onStrokeEnd={sendWhiteboardStrokeEnd}
+            onUndo={sendWhiteboardUndo}
             onClear={sendWhiteboardClear}
             onClose={() => toggleWhiteboard(false)}
           />

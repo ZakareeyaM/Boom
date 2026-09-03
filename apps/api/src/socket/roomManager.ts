@@ -389,6 +389,23 @@ export class RoomManager {
       });
     });
 
+    socket.on('whiteboard:strokeEnd', () => {
+      const meetingCode = this.socketToRoom.get(socket.id);
+      if (!meetingCode) return;
+
+      // Tell everyone else this sender's in-progress stroke is complete,
+      // so their local undo history stays in sync with the sender's.
+      socket.to(meetingCode).emit('whiteboard:strokeEnd', { senderId: socket.id });
+    });
+
+    socket.on('whiteboard:undo', () => {
+      const meetingCode = this.socketToRoom.get(socket.id);
+      if (!meetingCode) return;
+
+      // Broadcast undo to all other participants so they remove the same stroke
+      socket.to(meetingCode).emit('whiteboard:undo', { senderId: socket.id });
+    });
+
     socket.on('whiteboard:clear', () => {
       const meetingCode = this.socketToRoom.get(socket.id);
       if (!meetingCode) return;

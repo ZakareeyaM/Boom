@@ -20,6 +20,8 @@ interface WhiteboardStageProps {
   remoteStreams: Map<string, MediaStream>;
   connectionQuality: ConnectionQuality;
   onDraw: (line: DrawLinePayload) => void;
+  onStrokeEnd: () => void;
+  onUndo: () => void;
   onClear: () => void;
   onClose: () => void;
 }
@@ -41,6 +43,11 @@ const STROKE_SIZES = [
   { label: 'Thick', value: 10 },
 ];
 
+const BOARD_BG = '#0f172a';
+// Tall logical canvas height so the board can hold many notes/drawings and
+// scroll like a document, instead of being limited to a single screen.
+const BOARD_HEIGHT = 4000;
+
 export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   whiteboardState,
   localParticipant,
@@ -49,6 +56,8 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   remoteStreams,
   connectionQuality,
   onDraw,
+  onStrokeEnd,
+  onUndo,
   onClear,
   onClose,
 }) => {
@@ -61,70 +70,15 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const [selectedColor, setSelectedColor] = useState<string>('#ffffff');
   const [selectedSize, setSelectedSize] = useState<number>(5);
 
-  // Undo history stack
-  const historyRef = useRef<ImageData[]>([]);
+  // Synced stroke history: a "stroke" is everything drawn between a
+  // pointer-down and pointer-up. Keeping the full history (rather than just
+  // pixel snapshots) lets every participant redraw the same board state,
+  // so undo can be broadcast and applied identically on every screen.
+  const allStrokesRef = useRef<DrawLinePayload[][]>([]);
+  const currentLocalStrokeRef = useRef<DrawLinePayload[]>([]);
+  const remoteBuffersRef = useRef<Map<string, DrawLinePayload[]>>(new Map());
 
-  // Initialize and resize canvas
-  const handleResize = useCallback(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-
-    // Save current content before resize
-    const ctx = canvas.getContext('2d');
-    let prevData: ImageData | null = null;
-    if (ctx && canvas.width > 0 && canvas.height > 0) {
-      prevData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    }
-
-    const rect = container.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
-
-    if (ctx) {
-      ctx.scale(dpr, dpr);
-      // Dark chalkboard/whiteboard canvas background
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, rect.width, rect.height);
-
-      if (prevData) {
-        ctx.putImageData(prevData, 0, 0);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [handleResize]);
-
-  // Save current canvas state to undo history
-  const pushHistory = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    if (historyRef.current.length > 20) {
-      historyRef.current.shift();
-    }
-    historyRef.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-  };
-
-  const handleUndo = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx || historyRef.current.length === 0) return;
-    const last = historyRef.current.pop();
-    if (last) {
-      ctx.putImageData(last, 0, 0);
-    }
-  };
-
-  // Draw a normalized segment onto the canvas
+  // Paint a single normalized segment onto the canvas (pure drawing, no history)
   const drawSegment = useCallback(
     (prevX: number, prevY: number, currX: number, currY: number, color: string, size: number, isEraser: boolean) => {
       const canvas = canvasRef.current;
@@ -140,13 +94,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.lineWidth = size;
-
-      if (isEraser) {
-        ctx.strokeStyle = '#0f172a'; // Match background
-      } else {
-        ctx.strokeStyle = color;
-      }
-
+      ctx.strokeStyle = isEraser ? BOARD_BG : color;
       ctx.moveTo(prevX * width, prevY * height);
       ctx.lineTo(currX * width, currY * height);
       ctx.stroke();
@@ -156,18 +104,112 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     []
   );
 
-  // Expose remote draw receiver
+  const paintBackground = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.fillStyle = BOARD_BG;
+    ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+  }, []);
+
+  // Redraw the entire board from the synced stroke history (used after
+  // undo, clear, resize — anything where the canvas needs to be rebuilt).
+  const redrawAll = useCallback(() => {
+    paintBackground();
+    for (const stroke of allStrokesRef.current) {
+      for (const seg of stroke) {
+        drawSegment(seg.prevX, seg.prevY, seg.currX, seg.currY, seg.color, seg.size, seg.isEraser);
+      }
+    }
+  }, [drawSegment, paintBackground]);
+
+  // Initialize / resize canvas. Width tracks the container; height is a
+  // fixed tall value so the board scrolls vertically like a document.
+  const handleResize = useCallback(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const width = container.clientWidth;
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = width * dpr;
+    canvas.height = BOARD_HEIGHT * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${BOARD_HEIGHT}px`;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.scale(dpr, dpr);
+    }
+    redrawAll();
+  }, [redrawAll]);
+
   useEffect(() => {
-    (window as any).__boom_drawSegment = drawSegment;
-    (window as any).__boom_clearCanvas = () => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d');
-      if (!canvas || !ctx) return;
-      const dpr = window.devicePixelRatio || 1;
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (allStrokesRef.current.length === 0) return;
+    allStrokesRef.current.pop();
+    redrawAll();
+    onUndo();
+  }, [redrawAll, onUndo]);
+
+  // Bridge functions so MeetingRoomPage (which owns the socket connection)
+  // can feed remote events into this component without prop-drilling through
+  // the parent on every keystroke of the socket hook.
+  useEffect(() => {
+    (window as any).__boom_drawSegment = (
+      prevX: number,
+      prevY: number,
+      currX: number,
+      currY: number,
+      color: string,
+      size: number,
+      isEraser: boolean,
+      senderId?: string
+    ) => {
+      drawSegment(prevX, prevY, currX, currY, color, size, isEraser);
+      if (senderId) {
+        const buf = remoteBuffersRef.current.get(senderId) || [];
+        buf.push({ prevX, prevY, currX, currY, color, size, isEraser });
+        remoteBuffersRef.current.set(senderId, buf);
+      }
     };
-  }, [drawSegment]);
+
+    (window as any).__boom_strokeEnd = (senderId: string) => {
+      const buf = remoteBuffersRef.current.get(senderId);
+      if (buf && buf.length > 0) {
+        allStrokesRef.current.push(buf);
+      }
+      remoteBuffersRef.current.set(senderId, []);
+    };
+
+    (window as any).__boom_undo = () => {
+      if (allStrokesRef.current.length === 0) return;
+      allStrokesRef.current.pop();
+      redrawAll();
+    };
+
+    (window as any).__boom_clearCanvas = () => {
+      allStrokesRef.current = [];
+      remoteBuffersRef.current.clear();
+      currentLocalStrokeRef.current = [];
+      paintBackground();
+    };
+
+    return () => {
+      delete (window as any).__boom_drawSegment;
+      delete (window as any).__boom_strokeEnd;
+      delete (window as any).__boom_undo;
+      delete (window as any).__boom_clearCanvas;
+    };
+  }, [drawSegment, redrawAll, paintBackground]);
 
   // Pointer event handlers for drawing (Mouse, Pen, Touch)
   const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -180,8 +222,8 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   };
 
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    pushHistory();
     isDrawingRef.current = true;
+    currentLocalStrokeRef.current = [];
     const point = getCoordinates(e);
     lastPointRef.current = point;
   };
@@ -192,10 +234,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     const prevPoint = lastPointRef.current;
 
     const isEraser = activeTool === 'eraser';
-    drawSegment(prevPoint.x, prevPoint.y, currPoint.x, currPoint.y, selectedColor, selectedSize, isEraser);
-
-    // Broadcast draw event to peers
-    onDraw({
+    const segment: DrawLinePayload = {
       prevX: prevPoint.x,
       prevY: prevPoint.y,
       currX: currPoint.x,
@@ -203,24 +242,32 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       color: selectedColor,
       size: selectedSize,
       isEraser,
-    });
+    };
+
+    drawSegment(segment.prevX, segment.prevY, segment.currX, segment.currY, segment.color, segment.size, segment.isEraser);
+    currentLocalStrokeRef.current.push(segment);
+
+    // Broadcast draw event to peers (live, segment-by-segment for smoothness)
+    onDraw(segment);
 
     lastPointRef.current = currPoint;
   };
 
   const stopDrawing = () => {
+    if (isDrawingRef.current && currentLocalStrokeRef.current.length > 0) {
+      allStrokesRef.current.push(currentLocalStrokeRef.current);
+      currentLocalStrokeRef.current = [];
+      onStrokeEnd();
+    }
     isDrawingRef.current = false;
     lastPointRef.current = null;
   };
 
   const handleClear = () => {
-    pushHistory();
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    allStrokesRef.current = [];
+    remoteBuffersRef.current.clear();
+    currentLocalStrokeRef.current = [];
+    paintBackground();
     onClear();
   };
 
@@ -345,10 +392,10 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
       {/* Canvas Main Stage + Docked Video Strip */}
       <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0 overflow-hidden">
-        {/* Interactive Whiteboard Canvas */}
+        {/* Interactive Whiteboard Canvas — scrolls vertically like a document */}
         <div
           ref={containerRef}
-          className="flex-1 bg-slate-900 rounded-2xl border border-dark-border overflow-hidden relative shadow-2xl flex items-center justify-center cursor-crosshair touch-none"
+          className="flex-1 bg-slate-900 rounded-2xl border border-dark-border overflow-y-auto overflow-x-hidden relative shadow-2xl cursor-crosshair touch-none"
         >
           <canvas
             ref={canvasRef}
@@ -356,7 +403,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             onPointerMove={draw}
             onPointerUp={stopDrawing}
             onPointerLeave={stopDrawing}
-            className="w-full h-full block"
+            className="block"
           />
         </div>
 

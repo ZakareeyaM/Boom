@@ -25,6 +25,8 @@ interface UseWebRTCProps {
   onKicked?: (reason: string) => void;
   onMeetingEnded?: (reason: string) => void;
   onWhiteboardDraw?: (line: DrawLinePayload, senderId: string) => void;
+  onWhiteboardStrokeEnd?: (senderId: string) => void;
+  onWhiteboardUndo?: () => void;
   onWhiteboardClear?: () => void;
 }
 
@@ -46,6 +48,8 @@ export function useWebRTC({
   onKicked,
   onMeetingEnded,
   onWhiteboardDraw,
+  onWhiteboardStrokeEnd,
+  onWhiteboardUndo,
   onWhiteboardClear,
 }: UseWebRTCProps) {
   const [meetingState, setMeetingState] = useState<ClientMeetingState>('CONNECTING');
@@ -75,6 +79,8 @@ export function useWebRTC({
   const onKickedRef = useRef(onKicked);
   const onMeetingEndedRef = useRef(onMeetingEnded);
   const onWhiteboardDrawRef = useRef(onWhiteboardDraw);
+  const onWhiteboardStrokeEndRef = useRef(onWhiteboardStrokeEnd);
+  const onWhiteboardUndoRef = useRef(onWhiteboardUndo);
   const onWhiteboardClearRef = useRef(onWhiteboardClear);
 
   localStreamRef.current = localStream;
@@ -86,6 +92,8 @@ export function useWebRTC({
   onKickedRef.current = onKicked;
   onMeetingEndedRef.current = onMeetingEnded;
   onWhiteboardDrawRef.current = onWhiteboardDraw;
+  onWhiteboardStrokeEndRef.current = onWhiteboardStrokeEnd;
+  onWhiteboardUndoRef.current = onWhiteboardUndo;
   onWhiteboardClearRef.current = onWhiteboardClear;
 
   // Create an RTCPeerConnection for a remote peer
@@ -325,6 +333,14 @@ export function useWebRTC({
       onWhiteboardDrawRef.current?.(data.line, data.senderId);
     });
 
+    socket.on('whiteboard:strokeEnd', (data) => {
+      onWhiteboardStrokeEndRef.current?.(data.senderId);
+    });
+
+    socket.on('whiteboard:undo', () => {
+      onWhiteboardUndoRef.current?.();
+    });
+
     socket.on('whiteboard:clear', () => {
       onWhiteboardClearRef.current?.();
     });
@@ -488,6 +504,14 @@ export function useWebRTC({
     socketRef.current?.emit('whiteboard:draw', { line });
   }, []);
 
+  const sendWhiteboardStrokeEnd = useCallback(() => {
+    socketRef.current?.emit('whiteboard:strokeEnd');
+  }, []);
+
+  const sendWhiteboardUndo = useCallback(() => {
+    socketRef.current?.emit('whiteboard:undo');
+  }, []);
+
   const sendWhiteboardClear = useCallback(() => {
     socketRef.current?.emit('whiteboard:clear');
   }, []);
@@ -517,6 +541,8 @@ export function useWebRTC({
     resetScreenSharePermission,
     toggleWhiteboard,
     sendWhiteboardDraw,
+    sendWhiteboardStrokeEnd,
+    sendWhiteboardUndo,
     sendWhiteboardClear,
   };
 }

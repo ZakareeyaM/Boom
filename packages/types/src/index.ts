@@ -135,6 +135,8 @@ export interface ServerToClientEvents {
   'screenShare:permissionDenied': (data: { reason: string }) => void;
   'whiteboard:toggle': (state: WhiteboardState) => void;
   'whiteboard:draw': (data: { line: DrawLinePayload; senderId: string }) => void;
+  'whiteboard:strokeEnd': (data: { senderId: string }) => void;
+  'whiteboard:undo': (data: { senderId: string }) => void;
   'whiteboard:clear': () => void;
   'webrtc:offer': (payload: WebRTCOfferPayload) => void;
   'webrtc:answer': (payload: WebRTCAnswerPayload) => void;
@@ -165,6 +167,8 @@ export interface ClientToServerEvents {
   'screenShare:stop': () => void;
   'whiteboard:toggle': (data: { isOpen: boolean }) => void;
   'whiteboard:draw': (data: { line: DrawLinePayload }) => void;
+  'whiteboard:strokeEnd': () => void;
+  'whiteboard:undo': () => void;
   'whiteboard:clear': () => void;
   'chat:send': (data: { message: string }) => void;
   'webrtc:offer': (payload: WebRTCOfferPayload) => void;
