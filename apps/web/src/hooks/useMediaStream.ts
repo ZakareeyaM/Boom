@@ -163,6 +163,14 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
     }
   }, []);
 
+  // Set camera state explicitly (e.g. when the host disables your camera).
+  const setVideoState = useCallback((enabled: boolean) => {
+    if (!streamRef.current) return;
+    const videoTrack = streamRef.current.getVideoTracks()[0];
+    if (videoTrack) videoTrack.enabled = enabled;
+    setVideoEnabled(enabled);
+  }, []);
+
   // Switch Audio Input Device
   const switchAudioDevice = useCallback(
     async (deviceId: string) => {
@@ -193,6 +201,7 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
     toggleAudio,
     setAudioState,
     toggleVideo,
+    setVideoState,
     switchAudioDevice,
     switchVideoDevice,
     retryPermissions: () => initMedia(selectedAudioId || undefined, selectedVideoId || undefined),

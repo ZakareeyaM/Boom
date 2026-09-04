@@ -41,7 +41,9 @@ export const MeetingRoomPage: React.FC = () => {
     selectedAudioId,
     selectedVideoId,
     toggleAudio,
+    setAudioState,
     toggleVideo,
+    setVideoState,
     switchAudioDevice,
     switchVideoDevice,
   } = useMediaStream(initialAudio, initialVideo);
@@ -61,6 +63,8 @@ export const MeetingRoomPage: React.FC = () => {
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [chatAlert, setChatAlert] = useState(false);
+  const [showVideoGrid, setShowVideoGrid] = useState(true);
 
   // Modals State
   const [targetRemoveParticipant, setTargetRemoveParticipant] = useState<Participant | null>(null);
@@ -144,6 +148,7 @@ export const MeetingRoomPage: React.FC = () => {
     sendWhiteboardDraw,
     sendWhiteboardStrokeEnd,
     sendWhiteboardUndo,
+    sendWhiteboardRedo,
     sendWhiteboardClear,
     sendWhiteboardScroll,
     sendWhiteboardEraseRect,
@@ -161,9 +166,18 @@ export const MeetingRoomPage: React.FC = () => {
     onMeetingEnded: (reason) => {
       navigate('/ended', { state: { reason } });
     },
+    onHostMediaDisabled: (media) => {
+      if (media === 'video') setVideoState(false);
+      else setAudioState(false);
+    },
     onWhiteboardDraw: handleRemoteDraw,
     onWhiteboardStrokeEnd: handleRemoteStrokeEnd,
     onWhiteboardUndo: handleRemoteUndo,
+    onWhiteboardRedo: () => {
+      if (typeof (window as any).__boom_redo === 'function') {
+        (window as any).__boom_redo();
+      }
+    },
     onWhiteboardClear: handleRemoteClear,
     onWhiteboardScroll: handleRemoteScroll,
     onWhiteboardEraseRect: handleRemoteEraseRect,
@@ -172,18 +186,34 @@ export const MeetingRoomPage: React.FC = () => {
   const isHost = localParticipant?.isHost || false;
   const canEditWhiteboard = isHost || whiteboardPermission === 'granted';
 
-  // Track unread messages when chat drawer is closed
+  // Track unread messages and briefly pulse the chat button for everyone
+  // who receives a message while their chat drawer is closed.
   const prevMessagesCount = React.useRef(messages.length);
+  const messagesInitialized = React.useRef(false);
   useEffect(() => {
-    if (!isChatOpen && messages.length > prevMessagesCount.current) {
-      setUnreadCount((prev) => prev + (messages.length - prevMessagesCount.current));
+    if (!localParticipant) return;
+    if (!messagesInitialized.current) {
+      prevMessagesCount.current = messages.length;
+      messagesInitialized.current = true;
+      return;
+    }
+    if (messages.length > prevMessagesCount.current) {
+      const newMessages = messages.slice(prevMessagesCount.current);
+      const incoming = newMessages.some((message) => message.senderId !== localParticipant?.id);
+      if (!isChatOpen && incoming) {
+        setUnreadCount((prev) => prev + newMessages.filter((m) => m.senderId !== localParticipant?.id).length);
+        setChatAlert(true);
+      }
     }
     prevMessagesCount.current = messages.length;
-  }, [messages, isChatOpen]);
+  }, [messages, isChatOpen, localParticipant?.id]);
 
   const handleToggleChat = () => {
     setIsChatOpen((prev) => {
-      if (!prev) setUnreadCount(0);
+      if (!prev) {
+        setUnreadCount(0);
+        setChatAlert(false);
+      }
       return !prev;
     });
     if (isParticipantsOpen) setIsParticipantsOpen(false);
@@ -279,6 +309,7 @@ export const MeetingRoomPage: React.FC = () => {
             onDraw={sendWhiteboardDraw}
             onStrokeEnd={sendWhiteboardStrokeEnd}
             onUndo={sendWhiteboardUndo}
+            onRedo={sendWhiteboardRedo}
             onClear={sendWhiteboardClear}
             onScroll={sendWhiteboardScroll}
             onEraseRect={sendWhiteboardEraseRect}
@@ -294,11 +325,6 @@ export const MeetingRoomPage: React.FC = () => {
                 ? screenStream
                 : remoteStreams.get(screenSharer?.id || '') || null
             }
-            localParticipant={localParticipant!}
-            localStream={localStream}
-            remoteParticipants={remoteParticipants}
-            remoteStreams={remoteStreams}
-            connectionQuality={connectionQuality}
             onStopSharing={() => {
               stopScreenShare();
               broadcastScreenShareStop();
@@ -313,6 +339,8 @@ export const MeetingRoomPage: React.FC = () => {
               remoteParticipants={remoteParticipants}
               remoteStreams={remoteStreams}
               connectionQuality={connectionQuality}
+              showVideos={showVideoGrid}
+              onToggleVideos={() => setShowVideoGrid((prev) => !prev)}
             />
           )
         )}
@@ -326,6 +354,7 @@ export const MeetingRoomPage: React.FC = () => {
         isWhiteboardOpen={whiteboardState.isOpen}
         participantCount={participants.length}
         unreadCount={unreadCount}
+        chatAlert={chatAlert}
         isChatOpen={isChatOpen}
         isParticipantsOpen={isParticipantsOpen}
         isHost={isHost}

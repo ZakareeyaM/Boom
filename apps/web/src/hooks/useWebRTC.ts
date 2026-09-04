@@ -26,9 +26,11 @@ interface UseWebRTCProps {
   isSharingScreen: boolean;
   onKicked?: (reason: string) => void;
   onMeetingEnded?: (reason: string) => void;
+  onHostMediaDisabled?: (media: 'audio' | 'video') => void;
   onWhiteboardDraw?: (line: DrawLinePayload, senderId: string) => void;
   onWhiteboardStrokeEnd?: (senderId: string) => void;
   onWhiteboardUndo?: () => void;
+  onWhiteboardRedo?: () => void;
   onWhiteboardClear?: () => void;
   onWhiteboardScroll?: (scrollTop: number) => void;
   onWhiteboardEraseRect?: (rect: EraseRectPayload) => void;
@@ -51,9 +53,11 @@ export function useWebRTC({
   isSharingScreen,
   onKicked,
   onMeetingEnded,
+  onHostMediaDisabled,
   onWhiteboardDraw,
   onWhiteboardStrokeEnd,
   onWhiteboardUndo,
+  onWhiteboardRedo,
   onWhiteboardClear,
   onWhiteboardScroll,
   onWhiteboardEraseRect,
@@ -86,9 +90,11 @@ export function useWebRTC({
   const videoEnabledRef = useRef<boolean>(videoEnabled);
   const onKickedRef = useRef(onKicked);
   const onMeetingEndedRef = useRef(onMeetingEnded);
+  const onHostMediaDisabledRef = useRef(onHostMediaDisabled);
   const onWhiteboardDrawRef = useRef(onWhiteboardDraw);
   const onWhiteboardStrokeEndRef = useRef(onWhiteboardStrokeEnd);
   const onWhiteboardUndoRef = useRef(onWhiteboardUndo);
+  const onWhiteboardRedoRef = useRef(onWhiteboardRedo);
   const onWhiteboardClearRef = useRef(onWhiteboardClear);
   const onWhiteboardScrollRef = useRef(onWhiteboardScroll);
   const onWhiteboardEraseRectRef = useRef(onWhiteboardEraseRect);
@@ -101,9 +107,11 @@ export function useWebRTC({
   videoEnabledRef.current = videoEnabled;
   onKickedRef.current = onKicked;
   onMeetingEndedRef.current = onMeetingEnded;
+  onHostMediaDisabledRef.current = onHostMediaDisabled;
   onWhiteboardDrawRef.current = onWhiteboardDraw;
   onWhiteboardStrokeEndRef.current = onWhiteboardStrokeEnd;
   onWhiteboardUndoRef.current = onWhiteboardUndo;
+  onWhiteboardRedoRef.current = onWhiteboardRedo;
   onWhiteboardClearRef.current = onWhiteboardClear;
   onWhiteboardScrollRef.current = onWhiteboardScroll;
   onWhiteboardEraseRectRef.current = onWhiteboardEraseRect;
@@ -313,11 +321,14 @@ export function useWebRTC({
       setLocalParticipant((prev) => (prev?.id === updated.id ? updated : prev));
     });
 
-    socket.on('participant:muted', ({ participantId, mutedByHost }) => {
+    socket.on('participant:muted', ({ participantId, mutedByHost, media = 'audio' }) => {
       if (socket.id === participantId && mutedByHost) {
+        onHostMediaDisabledRef.current?.(media);
         if (localStreamRef.current) {
-          const audioTrack = localStreamRef.current.getAudioTracks()[0];
-          if (audioTrack) audioTrack.enabled = false;
+          const track = media === 'video'
+            ? localStreamRef.current.getVideoTracks()[0]
+            : localStreamRef.current.getAudioTracks()[0];
+          if (track) track.enabled = false;
         }
       }
     });
@@ -392,6 +403,10 @@ export function useWebRTC({
 
     socket.on('whiteboard:undo', () => {
       onWhiteboardUndoRef.current?.();
+    });
+
+    socket.on('whiteboard:redo', () => {
+      onWhiteboardRedoRef.current?.();
     });
 
     socket.on('whiteboard:clear', () => {
@@ -513,8 +528,8 @@ export function useWebRTC({
     socketRef.current.emit('chat:send', { message: text });
   }, []);
 
-  const muteParticipant = useCallback((targetParticipantId: string) => {
-    socketRef.current?.emit('participant:mute', { targetParticipantId });
+  const muteParticipant = useCallback((targetParticipantId: string, media: 'audio' | 'video' = 'audio') => {
+    socketRef.current?.emit('participant:mute', { targetParticipantId, media });
   }, []);
 
   const removeParticipant = useCallback((targetParticipantId: string) => {
@@ -594,6 +609,10 @@ export function useWebRTC({
     socketRef.current?.emit('whiteboard:undo');
   }, []);
 
+  const sendWhiteboardRedo = useCallback(() => {
+    socketRef.current?.emit('whiteboard:redo');
+  }, []);
+
   const sendWhiteboardClear = useCallback(() => {
     socketRef.current?.emit('whiteboard:clear');
   }, []);
@@ -638,6 +657,7 @@ export function useWebRTC({
     sendWhiteboardDraw,
     sendWhiteboardStrokeEnd,
     sendWhiteboardUndo,
+    sendWhiteboardRedo,
     sendWhiteboardClear,
     sendWhiteboardScroll,
     sendWhiteboardEraseRect,

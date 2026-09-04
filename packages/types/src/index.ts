@@ -135,7 +135,7 @@ export interface ServerToClientEvents {
   'participant:joined': (participant: Participant) => void;
   'participant:left': (data: { participantId: string; displayName: string }) => void;
   'participant:updated': (participant: Participant) => void;
-  'participant:muted': (data: { participantId: string; mutedByHost: boolean }) => void;
+  'participant:muted': (data: { participantId: string; mutedByHost: boolean; media?: 'audio' | 'video' }) => void;
   'participant:removed': (data: { participantId: string; reason: string }) => void;
   'meeting:ended': (data: { reason: string }) => void;
   'chat:message': (message: ChatMessage) => void;
@@ -153,6 +153,7 @@ export interface ServerToClientEvents {
   'whiteboard:draw': (data: { line: DrawLinePayload; senderId: string }) => void;
   'whiteboard:strokeEnd': (data: { senderId: string }) => void;
   'whiteboard:undo': (data: { senderId: string }) => void;
+  'whiteboard:redo': (data: { senderId: string }) => void;
   'whiteboard:clear': () => void;
   'whiteboard:scroll': (data: { scrollTop: number }) => void;
   'whiteboard:eraseRect': (data: { rect: EraseRectPayload }) => void;
@@ -175,7 +176,7 @@ export interface ClientToServerEvents {
   'meeting:leave': () => void;
   'meeting:end': (callback?: (res: { success: boolean; error?: string }) => void) => void;
   'participant:toggleMedia': (data: { audioEnabled?: boolean; videoEnabled?: boolean }) => void;
-  'participant:mute': (data: { targetParticipantId: string }) => void;
+  'participant:mute': (data: { targetParticipantId: string; media?: 'audio' | 'video' }) => void;
   'participant:remove': (data: { targetParticipantId: string }) => void;
   // Viewer requests screen share permission from host
   'screenShare:request': () => void;
@@ -189,6 +190,7 @@ export interface ClientToServerEvents {
   'whiteboard:draw': (data: { line: DrawLinePayload }) => void;
   'whiteboard:strokeEnd': () => void;
   'whiteboard:undo': () => void;
+  'whiteboard:redo': () => void;
   'whiteboard:clear': () => void;
   'whiteboard:scroll': (data: { scrollTop: number }) => void;
   'whiteboard:eraseRect': (data: { rect: EraseRectPayload }) => void;

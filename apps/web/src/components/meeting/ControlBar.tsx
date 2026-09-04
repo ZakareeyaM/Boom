@@ -21,6 +21,7 @@ interface ControlBarProps {
   isWhiteboardOpen: boolean;
   participantCount: number;
   unreadCount: number;
+  chatAlert?: boolean;
   isChatOpen: boolean;
   isParticipantsOpen: boolean;
   isHost: boolean;
@@ -43,6 +44,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   isWhiteboardOpen,
   participantCount,
   unreadCount,
+  chatAlert = false,
   isChatOpen,
   isParticipantsOpen,
   isHost,
@@ -195,9 +197,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               : 'bg-dark-card text-slate-300 hover:text-white hover:bg-dark-hover border-dark-border'
           }`}
         >
-          <MessageSquare className="w-5 h-5" />
+          <MessageSquare className={`w-5 h-5 ${chatAlert && !isChatOpen ? 'animate-pulse' : ''}`} />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-brand-500 text-white text-[10px] font-bold animate-bounce shadow-md">
+            <span className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-brand-500 text-white text-[10px] font-bold shadow-md ${chatAlert && !isChatOpen ? 'animate-bounce' : ''}`}>
               {unreadCount}
             </span>
           )}

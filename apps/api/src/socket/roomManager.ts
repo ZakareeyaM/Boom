@@ -176,8 +176,8 @@ export class RoomManager {
       this.io.to(meetingCode).emit('participant:updated', participant);
     });
 
-    // Host Action: Mute Participant
-    socket.on('participant:mute', ({ targetParticipantId }) => {
+    // Host Action: Disable a participant's microphone or camera.
+    socket.on('participant:mute', ({ targetParticipantId, media = 'audio' }) => {
       const meetingCode = this.socketToRoom.get(socket.id);
       if (!meetingCode) return;
 
@@ -186,18 +186,27 @@ export class RoomManager {
 
       const requester = room.participants.get(socket.id);
       if (!requester || !requester.isHost) {
-        return socket.emit('error', { code: 'FORBIDDEN', message: 'Only the host can mute participants.' });
+        return socket.emit('error', {
+          code: 'FORBIDDEN',
+          message: 'Only the host can disable participant media.',
+        });
       }
 
       const target = room.participants.get(targetParticipantId);
-      if (target) {
+      if (!target || target.isHost) return;
+
+      if (media === 'video') {
+        target.videoEnabled = false;
+      } else {
         target.audioEnabled = false;
-        this.io.to(meetingCode).emit('participant:updated', target);
-        this.io.to(targetParticipantId).emit('participant:muted', {
-          participantId: targetParticipantId,
-          mutedByHost: true,
-        });
       }
+
+      this.io.to(meetingCode).emit('participant:updated', target);
+      this.io.to(targetParticipantId).emit('participant:muted', {
+        participantId: targetParticipantId,
+        mutedByHost: true,
+        media,
+      });
     });
 
     // Host Action: Remove Participant
@@ -504,6 +513,19 @@ export class RoomManager {
 
       // Broadcast undo to all other participants so they remove the same stroke
       socket.to(meetingCode).emit('whiteboard:undo', { senderId: socket.id });
+    });
+
+    socket.on('whiteboard:redo', () => {
+      const meetingCode = this.socketToRoom.get(socket.id);
+      if (!meetingCode) return;
+
+      const room = this.rooms.get(meetingCode);
+      if (!room) return;
+      const participant = room.participants.get(socket.id);
+      const canEdit = !!participant && (participant.isHost || room.hostSocketId === socket.id || room.whiteboardEditors.has(socket.id));
+      if (!canEdit) return;
+
+      socket.to(meetingCode).emit('whiteboard:redo', { senderId: socket.id });
     });
 
     socket.on('whiteboard:clear', () => {

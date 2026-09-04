@@ -11,7 +11,7 @@ interface ParticipantsDrawerProps {
   currentUserId: string;
   isHost: boolean;
   meetingCode: string;
-  onMuteParticipant: (id: string) => void;
+  onMuteParticipant: (id: string, media?: 'audio' | 'video') => void;
   onRequestRemoveParticipant: (participant: Participant) => void;
 }
 
@@ -123,12 +123,22 @@ export const ParticipantsDrawer: React.FC<ParticipantsDrawerProps> = ({
                   <div className="flex items-center gap-1 ml-1 pl-1 border-l border-dark-border">
                     {p.audioEnabled && (
                       <button
-                        onClick={() => onMuteParticipant(p.id)}
+                        onClick={() => onMuteParticipant(p.id, 'audio')}
                         title="Mute Participant"
                         aria-label={`Mute ${p.displayName}`}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-400/10 transition-colors"
                       >
                         <VolumeX className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {p.videoEnabled && (
+                      <button
+                        onClick={() => onMuteParticipant(p.id, 'video')}
+                        title="Disable Participant Camera"
+                        aria-label={`Disable camera for ${p.displayName}`}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-400/10 transition-colors"
+                      >
+                        <VideoOff className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button

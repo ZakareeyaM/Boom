@@ -7,6 +7,14 @@ import {
   Download,
   X,
   RotateCcw,
+  Redo2,
+  Square,
+  Circle,
+  Minus,
+  ArrowUpRight,
+  Triangle,
+  Diamond,
+  Grid3X3,
   Presentation,
   PanelRightClose,
   PanelRightOpen,
@@ -31,6 +39,7 @@ interface WhiteboardStageProps {
   onDraw: (line: DrawLinePayload) => void;
   onStrokeEnd: () => void;
   onUndo: () => void;
+  onRedo: () => void;
   onClear: () => void;
   onScroll: (scrollTop: number) => void;
   onEraseRect: (rect: EraseRectPayload) => void;
@@ -73,6 +82,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   onDraw,
   onStrokeEnd,
   onUndo,
+  onRedo,
   onClear,
   onScroll,
   onEraseRect,
@@ -83,7 +93,10 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
-  const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'rect-erase'>('pen');
+  const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'rect-erase' | 'shape'>('pen');
+  const [selectedShape, setSelectedShape] = useState<'rectangle' | 'ellipse' | 'line' | 'arrow' | 'triangle' | 'diamond' | 'grid'>('rectangle');
+  const [gridRows, setGridRows] = useState(4);
+  const [gridCols, setGridCols] = useState(4);
   const [selectedColor, setSelectedColor] = useState<string>('#ffffff');
   const [selectedSize, setSelectedSize] = useState<number>(5);
   const [showVideoStrip, setShowVideoStrip] = useState(true);
@@ -97,6 +110,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   // so undo can be broadcast and applied identically on every screen.
   const allStrokesRef = useRef<DrawLinePayload[][]>([]);
   const currentLocalStrokeRef = useRef<DrawLinePayload[]>([]);
+  const redoStrokesRef = useRef<DrawLinePayload[][]>([]);
   const remoteBuffersRef = useRef<Map<string, DrawLinePayload[]>>(new Map());
 
   // Paint a single normalized segment onto the canvas (pure drawing, no history)
@@ -116,9 +130,19 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       ctx.lineJoin = 'round';
       ctx.lineWidth = size;
       ctx.strokeStyle = isEraser ? BOARD_BG : color;
-      ctx.moveTo(prevX * width, prevY * height);
-      ctx.lineTo(currX * width, currY * height);
-      ctx.stroke();
+      const startX = prevX * width;
+      const startY = prevY * height;
+      const endX = currX * width;
+      const endY = currY * height;
+      if (Math.abs(startX - endX) < 0.01 && Math.abs(startY - endY) < 0.01) {
+        ctx.fillStyle = isEraser ? BOARD_BG : color;
+        ctx.arc(startX, startY, Math.max(1, size / 2), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
       ctx.closePath();
       ctx.restore();
     },
@@ -203,10 +227,20 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
   const handleUndo = useCallback(() => {
     if (!canEdit || allStrokesRef.current.length === 0) return;
-    allStrokesRef.current.pop();
+    const stroke = allStrokesRef.current.pop();
+    if (stroke) redoStrokesRef.current.push(stroke);
     redrawAll();
     onUndo();
   }, [canEdit, redrawAll, onUndo]);
+
+  const handleRedo = useCallback(() => {
+    if (!canEdit || redoStrokesRef.current.length === 0) return;
+    const stroke = redoStrokesRef.current.pop();
+    if (!stroke) return;
+    allStrokesRef.current.push(stroke);
+    redrawAll();
+    onRedo();
+  }, [canEdit, redrawAll, onRedo]);
 
   // Bridge functions so MeetingRoomPage (which owns the socket connection)
   // can feed remote events into this component without prop-drilling through
@@ -223,6 +257,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       senderId?: string
     ) => {
       drawSegment(prevX, prevY, currX, currY, color, size, isEraser);
+      redoStrokesRef.current = [];
       if (senderId) {
         const buf = remoteBuffersRef.current.get(senderId) || [];
         buf.push({ prevX, prevY, currX, currY, color, size, isEraser });
@@ -240,12 +275,22 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
     (window as any).__boom_undo = () => {
       if (allStrokesRef.current.length === 0) return;
-      allStrokesRef.current.pop();
+      const stroke = allStrokesRef.current.pop();
+      if (stroke) redoStrokesRef.current.push(stroke);
+      redrawAll();
+    };
+
+    (window as any).__boom_redo = () => {
+      if (redoStrokesRef.current.length === 0) return;
+      const stroke = redoStrokesRef.current.pop();
+      if (!stroke) return;
+      allStrokesRef.current.push(stroke);
       redrawAll();
     };
 
     (window as any).__boom_clearCanvas = () => {
       allStrokesRef.current = [];
+      redoStrokesRef.current = [];
       remoteBuffersRef.current.clear();
       currentLocalStrokeRef.current = [];
       paintBackground();
@@ -265,6 +310,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       delete (window as any).__boom_drawSegment;
       delete (window as any).__boom_strokeEnd;
       delete (window as any).__boom_undo;
+      delete (window as any).__boom_redo;
       delete (window as any).__boom_clearCanvas;
       delete (window as any).__boom_scrollTo;
       delete (window as any).__boom_eraseRect;
@@ -281,11 +327,89 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   };
 
+  const makeSegment = (x1: number, y1: number, x2: number, y2: number): DrawLinePayload => ({
+    prevX: x1,
+    prevY: y1,
+    currX: x2,
+    currY: y2,
+    color: selectedColor,
+    size: selectedSize,
+    isEraser: false,
+  });
+
+  const getShapeSegments = useCallback(
+    (x1: number, y1: number, x2: number, y2: number): DrawLinePayload[] => {
+      const left = Math.min(x1, x2);
+      const right = Math.max(x1, x2);
+      const top = Math.min(y1, y2);
+      const bottom = Math.max(y1, y2);
+      const width = right - left;
+      const height = bottom - top;
+      const cx = (left + right) / 2;
+      const cy = (top + bottom) / 2;
+      const segments: DrawLinePayload[] = [];
+
+      if (selectedShape === 'rectangle') {
+        segments.push(
+          makeSegment(left, top, right, top),
+          makeSegment(right, top, right, bottom),
+          makeSegment(right, bottom, left, bottom),
+          makeSegment(left, bottom, left, top),
+        );
+      } else if (selectedShape === 'ellipse') {
+        const steps = 64;
+        const rx = width / 2;
+        const ry = height / 2;
+        for (let i = 0; i < steps; i++) {
+          const a1 = (i / steps) * Math.PI * 2;
+          const a2 = ((i + 1) / steps) * Math.PI * 2;
+          segments.push(makeSegment(cx + Math.cos(a1) * rx, cy + Math.sin(a1) * ry, cx + Math.cos(a2) * rx, cy + Math.sin(a2) * ry));
+        }
+      } else if (selectedShape === 'line') {
+        segments.push(makeSegment(x1, y1, x2, y2));
+      } else if (selectedShape === 'arrow') {
+        segments.push(makeSegment(x1, y1, x2, y2));
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const head = Math.max(0.015, Math.min(0.05, Math.hypot(width, height) * 0.08));
+        segments.push(
+          makeSegment(x2, y2, x2 - head * Math.cos(angle - Math.PI / 6), y2 - head * Math.sin(angle - Math.PI / 6)),
+          makeSegment(x2, y2, x2 - head * Math.cos(angle + Math.PI / 6), y2 - head * Math.sin(angle + Math.PI / 6)),
+        );
+      } else if (selectedShape === 'triangle') {
+        const apexX = cx;
+        segments.push(
+          makeSegment(apexX, top, right, bottom),
+          makeSegment(right, bottom, left, bottom),
+          makeSegment(left, bottom, apexX, top),
+        );
+      } else if (selectedShape === 'diamond') {
+        segments.push(
+          makeSegment(cx, top, right, cy),
+          makeSegment(right, cy, cx, bottom),
+          makeSegment(cx, bottom, left, cy),
+          makeSegment(left, cy, cx, top),
+        );
+      } else if (selectedShape === 'grid') {
+        for (let r = 0; r <= gridRows; r++) {
+          const y = top + (height * r) / gridRows;
+          segments.push(makeSegment(left, y, right, y));
+        }
+        for (let c = 0; c <= gridCols; c++) {
+          const x = left + (width * c) / gridCols;
+          segments.push(makeSegment(x, top, x, bottom));
+        }
+      }
+
+      return segments;
+    },
+    [selectedColor, selectedSize, selectedShape, gridRows, gridCols]
+  );
+
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canEdit) return;
     const point = getCoordinates(e);
 
-    if (activeTool === 'rect-erase') {
+    if (activeTool === 'rect-erase' || activeTool === 'shape') {
       selectionStartRef.current = point;
       const container = containerRef.current;
       const widthPx = container?.clientWidth || 0;
@@ -293,14 +417,22 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       return;
     }
 
+    // A single click creates a dot immediately. If the pointer then moves,
+    // subsequent segments are added to the same stroke.
     isDrawingRef.current = true;
     currentLocalStrokeRef.current = [];
+    redoStrokesRef.current = [];
+    const dot: DrawLinePayload = makeSegment(point.x, point.y, point.x, point.y);
+    dot.isEraser = activeTool === 'eraser';
+    drawSegment(dot.prevX, dot.prevY, dot.currX, dot.currY, dot.color, dot.size, dot.isEraser);
+    currentLocalStrokeRef.current.push(dot);
+    onDraw(dot);
     lastPointRef.current = point;
   };
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canEdit) return;
-    if (activeTool === 'rect-erase') {
+    if (activeTool === 'rect-erase' || activeTool === 'shape') {
       if (!selectionStartRef.current) return;
       const container = containerRef.current;
       const widthPx = container?.clientWidth || 0;
@@ -347,16 +479,32 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
   const stopDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canEdit) return;
-    if (activeTool === 'rect-erase') {
+    if (activeTool === 'rect-erase' || activeTool === 'shape') {
       if (selectionStartRef.current) {
         const start = selectionStartRef.current;
         const end = getCoordinates(e);
-        const rect: EraseRectPayload = { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+        const dx = Math.abs(end.x - start.x);
+        const dy = Math.abs(end.y - start.y);
 
-        // Only erase if the user actually dragged a real box, not a stray click
-        if (Math.abs(rect.x2 - rect.x1) > 0.002 || Math.abs(rect.y2 - rect.y1) > 0.002) {
-          applyEraseRect(rect);
-          onEraseRect(rect);
+        if (activeTool === 'rect-erase') {
+          const rect: EraseRectPayload = { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+          if (dx > 0.002 || dy > 0.002) {
+            applyEraseRect(rect);
+            onEraseRect(rect);
+          }
+        } else if (dx > 0.003 || dy > 0.003) {
+          const shapeSegments = getShapeSegments(start.x, start.y, end.x, end.y);
+          const stroke: DrawLinePayload[] = [];
+          for (const segment of shapeSegments) {
+            drawSegment(segment.prevX, segment.prevY, segment.currX, segment.currY, segment.color, segment.size, false);
+            onDraw(segment);
+            stroke.push(segment);
+          }
+          if (stroke.length > 0) {
+            allStrokesRef.current.push(stroke);
+            onStrokeEnd();
+          }
+          redoStrokesRef.current = [];
         }
       }
       selectionStartRef.current = null;
@@ -390,6 +538,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const handleClear = () => {
     if (!canEdit) return;
     allStrokesRef.current = [];
+    redoStrokesRef.current = [];
     remoteBuffersRef.current.clear();
     currentLocalStrokeRef.current = [];
     paintBackground();
@@ -441,11 +590,11 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             </div>
           ) : (
             <>
-          {/* Pen / Eraser / Rect-erase Toggle */}
+          {/* Pen / Eraser / Shape / Rect-erase Toggle */}
           <div className="flex items-center bg-dark-surface rounded-xl p-0.5 border border-dark-border">
             <button
               onClick={() => setActiveTool('pen')}
-              title="Pen tool"
+              title="Pen tool — click once for a dot"
               className={`p-1.5 rounded-lg transition-colors ${
                 activeTool === 'pen' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
@@ -460,6 +609,15 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
               }`}
             >
               <Eraser className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTool('shape')}
+              title="Shape / grid tool"
+              className={`p-1.5 rounded-lg transition-colors ${
+                activeTool === 'shape' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Square className="w-4 h-4" />
             </button>
             <button
               onClick={() => setActiveTool('rect-erase')}
@@ -489,6 +647,42 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             </div>
           )}
 
+          {/* Shape palette — drag to choose any size */}
+          {activeTool === 'shape' && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-dark-surface rounded-xl border border-dark-border">
+              {[
+                ['rectangle', Square],
+                ['ellipse', Circle],
+                ['line', Minus],
+                ['arrow', ArrowUpRight],
+                ['triangle', Triangle],
+                ['diamond', Diamond],
+                ['grid', Grid3X3],
+              ].map(([shape, Icon]: any) => (
+                <button
+                  key={shape}
+                  onClick={() => setSelectedShape(shape)}
+                  title={shape === 'grid' ? 'Grid / table' : String(shape)}
+                  className={`p-1.5 rounded-lg transition-colors ${selectedShape === shape ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  <Icon className="w-4 h-4" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeTool === 'shape' && selectedShape === 'grid' && (
+            <div className="flex items-center gap-1.5 bg-dark-surface rounded-xl border border-dark-border px-2 py-1 text-xs">
+              <Grid3X3 className="w-3.5 h-3.5 text-brand-400" />
+              <label className="text-slate-400">Rows
+                <input type="number" min={1} max={20} value={gridRows} onChange={(e) => setGridRows(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} className="ml-1 w-10 bg-dark-card border border-dark-border rounded px-1 py-0.5 text-slate-100" />
+              </label>
+              <label className="text-slate-400">Cols
+                <input type="number" min={1} max={20} value={gridCols} onChange={(e) => setGridCols(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} className="ml-1 w-10 bg-dark-card border border-dark-border rounded px-1 py-0.5 text-slate-100" />
+              </label>
+            </div>
+          )}
+
           {/* Stroke Size */}
           <div className="flex items-center gap-1 bg-dark-surface rounded-xl p-0.5 border border-dark-border text-xs">
             {STROKE_SIZES.map((s) => (
@@ -504,14 +698,25 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             ))}
           </div>
 
-          {/* Undo */}
-          <button
-            onClick={handleUndo}
-            title="Undo"
-            className="p-2 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white transition-colors"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
+          {/* Undo / Redo */}
+          <div className="flex items-center bg-dark-surface rounded-xl p-0.5 border border-dark-border">
+            <button
+              onClick={handleUndo}
+              disabled={allStrokesRef.current.length === 0}
+              title="Undo"
+              className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStrokesRef.current.length === 0}
+              title="Redo / bring back last undone action"
+              className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+          </div>
 
           {/* Clear Board */}
           <button
@@ -552,16 +757,14 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             </span>
           )}
 
-          {isHost && (
-            <button
-              onClick={() => setShowVideoStrip((prev) => !prev)}
-              title={showVideoStrip ? 'Minimize participant videos' : 'Show participant videos'}
-              aria-label={showVideoStrip ? 'Minimize participant videos' : 'Show participant videos'}
-              className="p-2 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white transition-colors"
-            >
-              {showVideoStrip ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
-            </button>
-          )}
+          <button
+            onClick={() => setShowVideoStrip((prev) => !prev)}
+            title={showVideoStrip ? 'Minimize participant videos' : 'Show participant videos'}
+            aria-label={showVideoStrip ? 'Minimize participant videos' : 'Show participant videos'}
+            className="p-2 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white transition-colors"
+          >
+            {showVideoStrip ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+          </button>
         </div>
       </div>
 
