@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Mic, MicOff, Video as VideoIcon, VideoOff, Crown, UserX, Copy, Check, VolumeX } from 'lucide-react';
+import { X, Mic, MicOff, Video as VideoIcon, VideoOff, Crown, UserX, Copy, Check, VolumeX, MonitorOff, PenOff } from 'lucide-react';
 import { Avatar } from '../common/Avatar';
 import { Button } from '../common/Button';
 import type { Participant } from '@boom/types';
@@ -13,6 +13,8 @@ interface ParticipantsDrawerProps {
   meetingCode: string;
   onMuteParticipant: (id: string, media?: 'audio' | 'video') => void;
   onRequestRemoveParticipant: (participant: Participant) => void;
+  onRevokeScreenShare: (id: string) => void;
+  onRevokeWhiteboardAccess: (id: string) => void;
 }
 
 export const ParticipantsDrawer: React.FC<ParticipantsDrawerProps> = ({
@@ -24,6 +26,8 @@ export const ParticipantsDrawer: React.FC<ParticipantsDrawerProps> = ({
   meetingCode,
   onMuteParticipant,
   onRequestRemoveParticipant,
+  onRevokeScreenShare,
+  onRevokeWhiteboardAccess,
 }) => {
   const [copied, setCopied] = React.useState(false);
 
@@ -141,6 +145,8 @@ export const ParticipantsDrawer: React.FC<ParticipantsDrawerProps> = ({
                         <VideoOff className="w-3.5 h-3.5" />
                       </button>
                     )}
+                    <button onClick={() => onRevokeScreenShare(p.id)} title={`Stop screen sharing permission for ${p.displayName}`} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-400/10 transition-colors"><MonitorOff className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => onRevokeWhiteboardAccess(p.id)} title={`Stop whiteboard access for ${p.displayName}`} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-400/10 transition-colors"><PenOff className="w-3.5 h-3.5" /></button>
                     <button
                       onClick={() => onRequestRemoveParticipant(p)}
                       title="Remove Participant"

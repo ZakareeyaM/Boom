@@ -2,9 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
-}
+:root { color-scheme: dark; }
+html { background:#0B0F17; }
 
 html, body, #root {
   height: 100%;
@@ -16,8 +15,8 @@ html, body, #root {
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 11px;
+  height: 11px;
 }
 ::-webkit-scrollbar-track {
   background: rgba(15, 23, 42, 0.6);
@@ -47,61 +46,67 @@ html, body, #root {
 
 
 /* -------------------------------------------------------------------------
-   Boom light theme
-   Most of the existing UI uses semantic-looking Tailwind classes such as
-   bg-dark-card/text-slate-100. Keep the dark design intact and remap those
-   shared surfaces when the ThemeProvider removes the .dark class.
+   Boom light theme — a clean neutral workspace rather than a white wash.
    ------------------------------------------------------------------------- */
-html:not(.dark) {
-  color-scheme: light;
-  background: #f8fafc;
-}
+html:not(.dark) { color-scheme: light; background:#f4f7fb; }
+html:not(.dark) body { background:#f4f7fb; color:#172033; }
+html:not(.dark) .bg-dark-bg { background:#f4f7fb !important; }
+html:not(.dark) .bg-dark-surface { background:rgba(255,255,255,.94) !important; }
+html:not(.dark) .bg-dark-card { background:#ffffff !important; }
+html:not(.dark) .bg-dark-hover { background:#edf2f7 !important; }
+html:not(.dark) .border-dark-border { border-color:#d8e0ea !important; }
+html:not(.dark) .bg-black { background:#e9eef5 !important; }
+html:not(.dark) .bg-slate-900 { background:#ffffff !important; }
+html:not(.dark) .bg-slate-950 { background:#f1f5f9 !important; }
+html:not(.dark) .text-white { color:#172033 !important; }
+html:not(.dark) .text-slate-100 { color:#172033 !important; }
+html:not(.dark) .text-slate-200 { color:#253248 !important; }
+html:not(.dark) .text-slate-300 { color:#3b4a60 !important; }
+html:not(.dark) .text-slate-400 { color:#66758a !important; }
+html:not(.dark) .text-slate-500 { color:#7b889a !important; }
+html:not(.dark) .hover\:text-white:hover { color:#111827 !important; }
+html:not(.dark) input, html:not(.dark) textarea, html:not(.dark) select { background:#fff !important; color:#172033 !important; border-color:#cbd5e1 !important; }
+html:not(.dark) input::placeholder, html:not(.dark) textarea::placeholder { color:#94a3b8 !important; }
+html:not(.dark) .video-tile-container { background:#e8edf4; }
+html:not(.dark) ::-webkit-scrollbar-track { background:#e7ecf3; }
+html:not(.dark) ::-webkit-scrollbar-thumb { background:#aeb9c8; }
+html:not(.dark) ::-webkit-scrollbar-thumb:hover { background:#8d9aad; }
+html:not(.dark) .boom-whiteboard-surface { background:#fff !important; }
+html:not(.dark) .shadow-2xl { box-shadow:0 18px 50px rgba(15,23,42,.10) !important; }
 
-html:not(.dark) body {
-  background: #f8fafc;
-  color: #0f172a;
-}
+/* Consistent light workspace */
+html:not(.dark) { color-scheme: light; }
+html:not(.dark) body { background:#f6f8fc; color:#182234; }
+html:not(.dark) .bg-dark-bg { background:#f6f8fc !important; }
+html:not(.dark) .bg-dark-surface { background:#eef2f7 !important; }
+html:not(.dark) .bg-dark-card { background:#ffffff !important; }
+html:not(.dark) .bg-dark-hover { background:#e6ebf2 !important; }
+html:not(.dark) .border-dark-border { border-color:#d6dee9 !important; }
+html:not(.dark) .text-white { color:#172033 !important; }
+html:not(.dark) .text-slate-100 { color:#1f2a3d !important; }
+html:not(.dark) .text-slate-200 { color:#2b3850 !important; }
+html:not(.dark) .text-slate-300 { color:#43516a !important; }
+html:not(.dark) .text-slate-400 { color:#64748b !important; }
+html:not(.dark) .text-slate-500 { color:#718096 !important; }
+html:not(.dark) .bg-slate-800 { background:#e2e8f0 !important; }
+html:not(.dark) .bg-slate-900 { background:#f8fafc !important; }
+html:not(.dark) .bg-slate-950 { background:#f1f5f9 !important; }
+html:not(.dark) input,html:not(.dark) textarea,html:not(.dark) select { background:#fff !important;color:#172033 !important;border-color:#cbd5e1 !important; }
+html:not(.dark) .boom-whiteboard-surface { background:#fff !important; }
+html:not(.dark) ::-webkit-scrollbar-track { background:#e9eef5; }
+html:not(.dark) ::-webkit-scrollbar-thumb { background:#b7c1cf; }
 
-html:not(.dark) .bg-dark-bg { background-color: #f8fafc !important; }
-html:not(.dark) .bg-dark-surface { background-color: #ffffff !important; }
-html:not(.dark) .bg-dark-card { background-color: #ffffff !important; }
-html:not(.dark) .bg-dark-hover { background-color: #e2e8f0 !important; }
-html:not(.dark) .border-dark-border { border-color: #dbe3ee !important; }
-html:not(.dark) .bg-slate-900 { background-color: #ffffff !important; }
-html:not(.dark) .bg-slate-950 { background-color: #f1f5f9 !important; }
-html:not(.dark) .bg-black { background-color: #e2e8f0 !important; }
 
-html:not(.dark) .text-slate-100,
-html:not(.dark) .text-slate-200,
-html:not(.dark) .text-slate-300 { color: #1e293b !important; }
-html:not(.dark) .text-slate-400,
-html:not(.dark) .text-slate-500 { color: #64748b !important; }
-html:not(.dark) .text-slate-600 { color: #475569 !important; }
-html:not(.dark) .text-white { color: #0f172a !important; }
-
-/* Preserve white labels/icons on primary/brand buttons and badges. */
-html:not(.dark) .bg-brand-500 .text-white,
-html:not(.dark) .bg-brand-600 .text-white,
-html:not(.dark) .bg-brand-700 .text-white,
-html:not(.dark) button.bg-brand-500,
-html:not(.dark) button.bg-brand-600,
-html:not(.dark) button.bg-brand-700,
-html:not(.dark) .bg-gradient-to-tr { color: #ffffff !important; }
-
-html:not(.dark) input,
-html:not(.dark) textarea,
-html:not(.dark) select {
-  background-color: #ffffff !important;
-  color: #0f172a !important;
-  border-color: #cbd5e1 !important;
-}
-html:not(.dark) input::placeholder,
-html:not(.dark) textarea::placeholder { color: #94a3b8 !important; }
-
-html:not(.dark) .video-tile-container { background-color: #e2e8f0; }
-html:not(.dark) ::-webkit-scrollbar-track { background: #eef2f7; }
-html:not(.dark) ::-webkit-scrollbar-thumb { background: #cbd5e1; }
-html:not(.dark) ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-/* Whiteboard stays white in light mode and slate in dark mode. */
-html:not(.dark) .boom-whiteboard-surface { background: #ffffff !important; }
+/* v6 polished theme surfaces */
+html:not(.dark) .bg-dark-bg { background:#f8fafc !important; }
+html:not(.dark) .bg-dark-surface { background:#eef2f7 !important; }
+html:not(.dark) .bg-dark-card { background:#ffffff !important; }
+html:not(.dark) .bg-dark-hover { background:#e8edf4 !important; }
+html:not(.dark) .border-dark-border { border-color:#d5dde8 !important; }
+html:not(.dark) .boom-whiteboard-surface { background:#ffffff !important; border-color:#cfd8e3 !important; }
+html:not(.dark) .text-slate-300 { color:#334155 !important; }
+html:not(.dark) .text-slate-400 { color:#64748b !important; }
+html:not(.dark) .text-slate-500 { color:#64748b !important; }
+html:not(.dark) .text-slate-600 { color:#475569 !important; }
+html:not(.dark) button.bg-dark-card { box-shadow:0 1px 2px rgba(15,23,42,.05); }
+html:not(.dark) .shadow-2xl { box-shadow:0 20px 50px rgba(15,23,42,.10) !important; }

@@ -41,7 +41,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (theme === 'system') {
       const media = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleChange = (event: MediaQueryListEvent) => setIsDark(event.matches);
+      const handleChange = (event: MediaQueryListEvent) => { setIsDark(event.matches); root.classList.toggle('dark', event.matches); };
       media.addEventListener?.('change', handleChange);
       return () => media.removeEventListener?.('change', handleChange);
     }

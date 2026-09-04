@@ -26,7 +26,7 @@ export const PreJoinPage: React.FC = () => {
   const { meetingCode } = useParams<{ meetingCode: string }>();
   const navigate = useNavigate();
 
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(() => localStorage.getItem('boom_display_name') || '');
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [isVerifying, setIsVerifying] = useState(true);
   const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -90,6 +90,7 @@ export const PreJoinPage: React.FC = () => {
 
   const handleJoin = () => {
     const finalName = displayName.trim() || 'Guest';
+    if (finalName !== 'Guest') localStorage.setItem('boom_display_name', finalName);
     navigate(`/meeting/${meetingCode}`, {
       state: {
         displayName: finalName,
@@ -257,7 +258,10 @@ export const PreJoinPage: React.FC = () => {
               type="text"
               required
               value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+                onChange={(e) => {
+                setDisplayName(e.target.value);
+                if (e.target.value.trim()) localStorage.setItem('boom_display_name', e.target.value.trim());
+              }}
               placeholder="e.g. Sarah Jenkins"
               leftIcon={<UserIcon className="w-4 h-4" />}
               onKeyDown={(e) => {

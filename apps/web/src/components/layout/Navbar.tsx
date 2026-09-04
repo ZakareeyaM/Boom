@@ -1,13 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Video, Sun, Moon } from 'lucide-react';
-import { useTheme } from '../../context/ThemeContext';
+import { Video } from 'lucide-react';
+import { ThemeToggle } from './ThemeToggle';
 
 export const Navbar: React.FC = () => {
-  const { setTheme, isDark } = useTheme();
-
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-dark-border bg-dark-bg/80 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full border-b border-dark-border bg-dark-bg/80 dark:bg-dark-bg/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand Logo */}
         <Link to="/" className="flex items-center gap-2.5 group">
@@ -23,13 +21,7 @@ export const Navbar: React.FC = () => {
 
         {/* Right: Theme Toggle only */}
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-dark-card border border-transparent hover:border-dark-border transition-colors"
-            aria-label="Toggle theme"
-          >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
+          <ThemeToggle />
         </div>
       </div>
     </header>

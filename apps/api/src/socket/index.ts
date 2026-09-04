@@ -11,6 +11,7 @@ export function setupSocketServer(httpServer: HttpServer) {
       methods: ['GET', 'POST'],
       credentials: true,
     },
+    maxHttpBufferSize: 12 * 1024 * 1024,
     pingInterval: 10000,
     pingTimeout: 5000,
   });

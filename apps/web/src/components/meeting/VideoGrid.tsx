@@ -1,6 +1,7 @@
 import React from 'react';
 import { ParticipantTile } from './ParticipantTile';
 import { PanelTopClose, PanelTopOpen } from 'lucide-react';
+import { ThemeToggle } from '../layout/ThemeToggle';
 import type { Participant, ConnectionQuality } from '@boom/types';
 
 interface VideoGridProps {
@@ -43,6 +44,8 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
 
   return (
     <div className="relative w-full h-full p-3 sm:p-4 md:p-6 flex items-center justify-center overflow-hidden">
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+      <ThemeToggle />
       <button
         onClick={onToggleVideos}
         title={showVideos ? 'Minimize video cameras' : 'Show video cameras'}
@@ -51,6 +54,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({
       >
         {showVideos ? <PanelTopClose className="w-4 h-4" /> : <PanelTopOpen className="w-4 h-4" />}
       </button>
+      </div>
       {showVideos ? (
       <div className={`grid gap-3 sm:gap-4 w-full items-center justify-center ${getGridClasses()}`}>
         {/* Local Participant Tile */}

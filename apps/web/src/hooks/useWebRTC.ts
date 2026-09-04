@@ -8,6 +8,9 @@ import type {
   WhiteboardState,
   DrawLinePayload,
   EraseRectPayload,
+  WhiteboardAsset,
+  WhiteboardCursor,
+  WhiteboardText, WhiteboardShape,
   ScreenShareRequest,
   WhiteboardEditRequest,
   ClientMeetingState,
@@ -34,6 +37,14 @@ interface UseWebRTCProps {
   onWhiteboardClear?: () => void;
   onWhiteboardScroll?: (scrollTop: number) => void;
   onWhiteboardEraseRect?: (rect: EraseRectPayload) => void;
+  onWhiteboardSnapshot?: (history: DrawLinePayload[][], asset: WhiteboardAsset | null, texts: WhiteboardText[], shapes?: WhiteboardShape[]) => void;
+  onWhiteboardCursor?: (cursor: WhiteboardCursor) => void;
+  onWhiteboardText?: (text: WhiteboardText) => void;
+  onWhiteboardAsset?: (asset: WhiteboardAsset | null) => void;
+  onWhiteboardShape?: (shape: WhiteboardShape) => void;
+  onWhiteboardTextUpdate?: (text: WhiteboardText) => void;
+  onWhiteboardShapeDelete?: (shapeId: string) => void;
+  onScreenShareForceStop?: (reason: string) => void;
 }
 
 // In local dev Vite on port 3000 connects directly to backend port 5000 to prevent Vite proxy ECONNRESET
@@ -61,6 +72,14 @@ export function useWebRTC({
   onWhiteboardClear,
   onWhiteboardScroll,
   onWhiteboardEraseRect,
+  onWhiteboardSnapshot,
+  onWhiteboardCursor,
+  onWhiteboardText,
+  onWhiteboardAsset,
+  onWhiteboardShape,
+  onWhiteboardTextUpdate,
+  onWhiteboardShapeDelete,
+  onScreenShareForceStop,
 }: UseWebRTCProps) {
   const [meetingState, setMeetingState] = useState<ClientMeetingState>('CONNECTING');
   const [meeting, setMeeting] = useState<Meeting | null>(null);
@@ -98,6 +117,14 @@ export function useWebRTC({
   const onWhiteboardClearRef = useRef(onWhiteboardClear);
   const onWhiteboardScrollRef = useRef(onWhiteboardScroll);
   const onWhiteboardEraseRectRef = useRef(onWhiteboardEraseRect);
+  const onWhiteboardSnapshotRef = useRef(onWhiteboardSnapshot);
+  const onWhiteboardCursorRef = useRef(onWhiteboardCursor);
+  const onWhiteboardTextRef = useRef(onWhiteboardText);
+  const onWhiteboardAssetRef = useRef(onWhiteboardAsset);
+  const onWhiteboardShapeRef = useRef(onWhiteboardShape);
+  const onWhiteboardTextUpdateRef = useRef(onWhiteboardTextUpdate);
+  const onWhiteboardShapeDeleteRef = useRef(onWhiteboardShapeDelete);
+  const onScreenShareForceStopRef = useRef(onScreenShareForceStop);
 
   localStreamRef.current = localStream;
   screenStreamRef.current = screenStream;
@@ -115,6 +142,14 @@ export function useWebRTC({
   onWhiteboardClearRef.current = onWhiteboardClear;
   onWhiteboardScrollRef.current = onWhiteboardScroll;
   onWhiteboardEraseRectRef.current = onWhiteboardEraseRect;
+  onWhiteboardSnapshotRef.current = onWhiteboardSnapshot;
+  onWhiteboardCursorRef.current = onWhiteboardCursor;
+  onWhiteboardTextRef.current = onWhiteboardText;
+  onWhiteboardAssetRef.current = onWhiteboardAsset;
+  onWhiteboardShapeRef.current = onWhiteboardShape;
+  onWhiteboardTextUpdateRef.current = onWhiteboardTextUpdate;
+  onWhiteboardShapeDeleteRef.current = onWhiteboardShapeDelete;
+  onScreenShareForceStopRef.current = onScreenShareForceStop;
 
   // Wait for the local camera/mic stream to be ready before creating an
   // offer or answer. WebRTC does not automatically renegotiate when tracks
@@ -263,9 +298,8 @@ export function useWebRTC({
       setLocalParticipant(data.participant);
       setParticipants(data.participants);
       setMessages(data.messages);
-      if (data.whiteboardState) {
-        setWhiteboardState(data.whiteboardState);
-      }
+      if (data.whiteboardState) setWhiteboardState(data.whiteboardState);
+      onWhiteboardSnapshotRef.current?.(data.whiteboardHistory || [], data.whiteboardAsset || null, (data as any).whiteboardTexts || [], (data as any).whiteboardShapes || []);
       setMeetingState('CONNECTED');
 
       // Ensure our own camera/mic are ready before negotiating, so the
@@ -369,9 +403,9 @@ export function useWebRTC({
     });
 
     // Permission: Viewer receives denial
-    socket.on('screenShare:permissionDenied', () => {
-      setScreenSharePermission('denied');
-    });
+    socket.on('screenShare:permissionDenied', () => { setScreenSharePermission('denied'); });
+    socket.on('screenShare:permissionRevoked', () => { setScreenSharePermission('denied'); });
+    socket.on('screenShare:forceStop', ({ reason }) => { setScreenSharePermission('denied'); onScreenShareForceStopRef.current?.(reason); });
 
     // Permission: Host receives a whiteboard editing request
     socket.on('whiteboard:requested', (data) => {
@@ -384,9 +418,8 @@ export function useWebRTC({
     });
 
     // Viewer receives whiteboard editing denial
-    socket.on('whiteboard:permissionDenied', () => {
-      setWhiteboardPermission('denied');
-    });
+    socket.on('whiteboard:permissionDenied', () => { setWhiteboardPermission('denied'); });
+    socket.on('whiteboard:permissionRevoked', () => { setWhiteboardPermission('denied'); });
 
     // Whiteboard Events
     socket.on('whiteboard:toggle', (state) => {
@@ -401,13 +434,9 @@ export function useWebRTC({
       onWhiteboardStrokeEndRef.current?.(data.senderId);
     });
 
-    socket.on('whiteboard:undo', () => {
-      onWhiteboardUndoRef.current?.();
-    });
+    socket.on('whiteboard:undo', (data) => { onWhiteboardSnapshotRef.current?.(data.history, data.asset, data.texts || [], (data as any).shapes || []); });
 
-    socket.on('whiteboard:redo', () => {
-      onWhiteboardRedoRef.current?.();
-    });
+    socket.on('whiteboard:redo', (data) => { onWhiteboardSnapshotRef.current?.(data.history, data.asset, data.texts || [], (data as any).shapes || []); });
 
     socket.on('whiteboard:clear', () => {
       onWhiteboardClearRef.current?.();
@@ -417,9 +446,15 @@ export function useWebRTC({
       onWhiteboardScrollRef.current?.(data.scrollTop);
     });
 
-    socket.on('whiteboard:eraseRect', (data) => {
-      onWhiteboardEraseRectRef.current?.(data.rect);
-    });
+    socket.on('whiteboard:eraseRect', (data) => { onWhiteboardEraseRectRef.current?.(data.rect); });
+    socket.on('whiteboard:snapshot', (data) => { onWhiteboardSnapshotRef.current?.(data.history, data.asset, data.texts || [], (data as any).shapes || []); });
+    socket.on('whiteboard:cursor', (data) => { onWhiteboardCursorRef.current?.(data); });
+    socket.on('whiteboard:asset', ({ asset }) => { onWhiteboardAssetRef.current?.(asset); });
+    socket.on('whiteboard:text', ({ text }) => { onWhiteboardTextRef.current?.(text); });
+    socket.on('whiteboard:textUpdate', ({ text }) => { onWhiteboardTextUpdateRef.current?.(text); });
+    socket.on('whiteboard:shape', ({ shape }) => { onWhiteboardShapeRef.current?.(shape); });
+    socket.on('whiteboard:shapeUpdate', ({ shape }) => { onWhiteboardShapeRef.current?.(shape); });
+    socket.on('whiteboard:shapeDelete', ({ shapeId }) => { onWhiteboardShapeDeleteRef.current?.(shapeId); });
 
     // WebRTC Offer Received
     socket.on('webrtc:offer', async (payload) => {
@@ -625,6 +660,16 @@ export function useWebRTC({
     socketRef.current?.emit('whiteboard:eraseRect', { rect });
   }, []);
 
+  const revokeScreenShare = useCallback((targetParticipantId: string) => { socketRef.current?.emit('screenShare:revoke', { targetParticipantId }); }, []);
+  const revokeWhiteboardAccess = useCallback((targetParticipantId: string) => { socketRef.current?.emit('whiteboard:revoke', { targetParticipantId }); }, []);
+  const sendWhiteboardCursor = useCallback((cursor: Omit<WhiteboardCursor,'participantId'|'displayName'>) => { socketRef.current?.emit('whiteboard:cursor', cursor); }, []);
+  const sendWhiteboardAsset = useCallback((asset: WhiteboardAsset | null) => { socketRef.current?.emit('whiteboard:asset', { asset }); }, []);
+  const sendWhiteboardText = useCallback((text: WhiteboardText) => { socketRef.current?.emit('whiteboard:text', { text }); }, []);
+  const sendWhiteboardTextUpdate = useCallback((text: WhiteboardText) => { socketRef.current?.emit('whiteboard:textUpdate', { text }); }, []);
+  const sendWhiteboardShape = useCallback((shape: WhiteboardShape) => { socketRef.current?.emit('whiteboard:shape', { shape }); }, []);
+  const sendWhiteboardShapeUpdate = useCallback((shape: WhiteboardShape) => { socketRef.current?.emit('whiteboard:shapeUpdate', { shape }); }, []);
+  const sendWhiteboardShapeDelete = useCallback((shapeId: string) => { socketRef.current?.emit('whiteboard:shapeDelete', { shapeId }); }, []);
+
   return {
     meetingState,
     meeting,
@@ -661,5 +706,14 @@ export function useWebRTC({
     sendWhiteboardClear,
     sendWhiteboardScroll,
     sendWhiteboardEraseRect,
+    revokeScreenShare,
+    revokeWhiteboardAccess,
+    sendWhiteboardCursor,
+    sendWhiteboardAsset,
+    sendWhiteboardText,
+    sendWhiteboardTextUpdate,
+    sendWhiteboardShape,
+    sendWhiteboardShapeUpdate,
+    sendWhiteboardShapeDelete,
   };
 }

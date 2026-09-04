@@ -1,61 +1,35 @@
 {
   "users": [
     {
-      "id": "guest_73bf0a4e-8bad-472d-b3fd-889790ce7ca5",
+      "id": "guest_14009e93-b548-4bdc-9f59-ae2f0689d012",
       "name": "Host",
-      "email": "guest_guest_73bf0a4e-8bad-472d-b3fd-889790ce7ca5@boom.local",
+      "email": "guest_guest_14009e93-b548-4bdc-9f59-ae2f0689d012@boom.local",
       "passwordHash": "guest_nologin",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-04T08:02:54.985Z",
-      "updatedAt": "2026-09-04T08:02:54.985Z"
-    },
-    {
-      "id": "guest_66286d65-87d7-4eaf-a831-c313f291d621",
-      "name": "Host",
-      "email": "guest_guest_66286d65-87d7-4eaf-a831-c313f291d621@boom.local",
-      "passwordHash": "guest_nologin",
-      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-04T08:04:02.897Z",
-      "updatedAt": "2026-09-04T08:04:02.897Z"
+      "createdAt": "2026-09-04T17:17:36.303Z",
+      "updatedAt": "2026-09-04T17:17:36.303Z"
     }
   ],
   "meetings": [
     {
-      "id": "meet_f9113072-fb8a-4fbd-8493-c4553d315ccb",
-      "meetingCode": "HQ58-VRFZ",
-      "hostId": "guest_73bf0a4e-8bad-472d-b3fd-889790ce7ca5",
+      "id": "meet_c6c64e6b-7c4d-4869-97f2-33019969449e",
+      "meetingCode": "R8K3-HU95",
+      "hostId": "guest_14009e93-b548-4bdc-9f59-ae2f0689d012",
       "title": "Quick Meeting",
       "status": "ENDED",
-      "createdAt": "2026-09-04T08:02:54.990Z",
-      "endedAt": "2026-09-04T08:03:41.868Z"
-    },
-    {
-      "id": "meet_b4fd4a3d-4f20-4370-9829-33a547e8172e",
-      "meetingCode": "RGZQ-V7C2",
-      "hostId": "guest_66286d65-87d7-4eaf-a831-c313f291d621",
-      "title": "Quick Meeting",
-      "status": "ACTIVE",
-      "createdAt": "2026-09-04T08:04:02.898Z"
+      "createdAt": "2026-09-04T17:17:36.309Z",
+      "endedAt": "2026-09-04T17:21:20.187Z"
     }
   ],
   "participants": [
     {
-      "id": "HCgh-1EOy2VFy8v7AAAC",
-      "meetingId": "meet_f9113072-fb8a-4fbd-8493-c4553d315ccb",
+      "id": "el4ud0NUfl_OuknIAAAC",
+      "meetingId": "meet_c6c64e6b-7c4d-4869-97f2-33019969449e",
       "userId": null,
-      "displayName": "dfghj",
+      "displayName": "Zak",
       "isHost": true,
-      "joinedAt": "2026-09-04T08:02:57.310Z",
-      "leftAt": "2026-09-04T08:03:41.871Z"
-    },
-    {
-      "id": "w1vOaQqqgoLpJ87oAAAF",
-      "meetingId": "meet_b4fd4a3d-4f20-4370-9829-33a547e8172e",
-      "userId": null,
-      "displayName": "drtyhj",
-      "isHost": true,
-      "joinedAt": "2026-09-04T08:04:05.220Z",
-      "leftAt": "2026-09-04T08:09:04.151Z"
+      "joinedAt": "2026-09-04T17:17:40.880Z",
+      "leftAt": "2026-09-04T17:21:20.188Z"
     }
   ],
   "messages": {}

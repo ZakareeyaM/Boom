@@ -19,7 +19,7 @@ import { WhiteboardRequestModal } from '../components/meeting/WhiteboardRequestM
 import { useMediaStream } from '../hooks/useMediaStream';
 import { useScreenShare } from '../hooks/useScreenShare';
 import { useWebRTC } from '../hooks/useWebRTC';
-import type { Participant, DrawLinePayload, EraseRectPayload } from '@boom/types';
+import type { Participant, DrawLinePayload, EraseRectPayload, WhiteboardAsset, WhiteboardCursor, WhiteboardText, WhiteboardShape } from '@boom/types';
 
 export const MeetingRoomPage: React.FC = () => {
   const { meetingId } = useParams<{ meetingId: string }>();
@@ -56,7 +56,7 @@ export const MeetingRoomPage: React.FC = () => {
     stopScreenShare,
   } = useScreenShare(() => {
     broadcastScreenShareStop();
-  });
+  }, localStream);
 
   // UI State
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -65,6 +65,11 @@ export const MeetingRoomPage: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatAlert, setChatAlert] = useState(false);
   const [showVideoGrid, setShowVideoGrid] = useState(true);
+  const [whiteboardHistory, setWhiteboardHistory] = useState<DrawLinePayload[][]>([]);
+  const [whiteboardAsset, setWhiteboardAsset] = useState<WhiteboardAsset | null>(null);
+  const [whiteboardCursors, setWhiteboardCursors] = useState<Map<string, WhiteboardCursor>>(new Map());
+  const [whiteboardTexts, setWhiteboardTexts] = useState<WhiteboardText[]>([]);
+  const [whiteboardShapes, setWhiteboardShapes] = useState<WhiteboardShape[]>([]);
 
   // Modals State
   const [targetRemoveParticipant, setTargetRemoveParticipant] = useState<Participant | null>(null);
@@ -100,9 +105,8 @@ export const MeetingRoomPage: React.FC = () => {
   }, []);
 
   const handleRemoteClear = useCallback(() => {
-    if (typeof (window as any).__boom_clearCanvas === 'function') {
-      (window as any).__boom_clearCanvas();
-    }
+    setWhiteboardHistory([]); setWhiteboardTexts([]); setWhiteboardShapes([]); setWhiteboardAsset(null);
+    if (typeof (window as any).__boom_clearCanvas === 'function') (window as any).__boom_clearCanvas();
   }, []);
 
   const handleRemoteScroll = useCallback((scrollTop: number) => {
@@ -152,6 +156,15 @@ export const MeetingRoomPage: React.FC = () => {
     sendWhiteboardClear,
     sendWhiteboardScroll,
     sendWhiteboardEraseRect,
+    revokeScreenShare,
+    revokeWhiteboardAccess,
+    sendWhiteboardCursor,
+    sendWhiteboardAsset,
+    sendWhiteboardText,
+    sendWhiteboardTextUpdate,
+    sendWhiteboardShape,
+    sendWhiteboardShapeUpdate,
+    sendWhiteboardShapeDelete,
   } = useWebRTC({
     meetingCode,
     displayName,
@@ -181,6 +194,14 @@ export const MeetingRoomPage: React.FC = () => {
     onWhiteboardClear: handleRemoteClear,
     onWhiteboardScroll: handleRemoteScroll,
     onWhiteboardEraseRect: handleRemoteEraseRect,
+    onWhiteboardSnapshot: (history, asset, texts, shapes) => { setWhiteboardHistory(history); setWhiteboardAsset(asset); setWhiteboardTexts(texts); setWhiteboardShapes(shapes || []); },
+    onWhiteboardText: (text) => setWhiteboardTexts(prev => [...prev.filter(t => t.id !== text.id), text]),
+    onWhiteboardTextUpdate: (text) => setWhiteboardTexts(prev => prev.map(t => t.id === text.id ? text : t)),
+    onWhiteboardShape: (shape) => setWhiteboardShapes(prev => [...prev.filter(s => s.id !== shape.id), shape]),
+    onWhiteboardShapeDelete: (shapeId) => setWhiteboardShapes(prev => prev.filter(s => s.id !== shapeId)),
+    onWhiteboardAsset: (asset) => setWhiteboardAsset(asset),
+    onWhiteboardCursor: (cursor) => { setWhiteboardCursors(prev => { const next = new Map(prev); if (cursor.visible) next.set(cursor.participantId, cursor); else next.delete(cursor.participantId); return next; }); },
+    onScreenShareForceStop: () => { stopScreenShare(); },
   });
 
   const isHost = localParticipant?.isHost || false;
@@ -310,9 +331,21 @@ export const MeetingRoomPage: React.FC = () => {
             onStrokeEnd={sendWhiteboardStrokeEnd}
             onUndo={sendWhiteboardUndo}
             onRedo={sendWhiteboardRedo}
-            onClear={sendWhiteboardClear}
+            onClear={() => { setWhiteboardHistory([]); setWhiteboardTexts([]); setWhiteboardShapes([]); setWhiteboardAsset(null); sendWhiteboardClear(); }}
             onScroll={sendWhiteboardScroll}
             onEraseRect={sendWhiteboardEraseRect}
+            whiteboardHistory={whiteboardHistory}
+            whiteboardAsset={whiteboardAsset}
+            remoteCursors={whiteboardCursors}
+            whiteboardTexts={whiteboardTexts}
+            whiteboardShapes={whiteboardShapes}
+            onText={sendWhiteboardText}
+            onTextUpdate={sendWhiteboardTextUpdate}
+            onShape={sendWhiteboardShape}
+            onShapeUpdate={(shape)=>{setWhiteboardShapes(prev=>prev.map(s=>s.id===shape.id?shape:s));sendWhiteboardShapeUpdate(shape);}}
+            onShapeDelete={sendWhiteboardShapeDelete}
+            onCursor={sendWhiteboardCursor}
+            onAsset={sendWhiteboardAsset}
             onClose={() => toggleWhiteboard(false)}
           />
         ) : screenSharer || isSharingScreen ? (
@@ -388,6 +421,8 @@ export const MeetingRoomPage: React.FC = () => {
         isHost={isHost}
         meetingCode={meetingCode}
         onMuteParticipant={muteParticipant}
+        onRevokeScreenShare={revokeScreenShare}
+        onRevokeWhiteboardAccess={revokeWhiteboardAccess}
         onRequestRemoveParticipant={(p) => setTargetRemoveParticipant(p)}
       />
 
