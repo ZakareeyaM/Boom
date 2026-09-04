@@ -15,7 +15,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return (localStorage.getItem('boom_theme') as ThemeMode) || 'dark';
   });
 
-  const [isDark, setIsDark] = useState<boolean>(true);
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    const saved = (localStorage.getItem('boom_theme') as ThemeMode) || 'dark';
+    return saved === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : saved === 'dark';
+  });
 
   useEffect(() => {
     const root = document.documentElement;
@@ -35,6 +38,13 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     localStorage.setItem('boom_theme', theme);
+
+    if (theme === 'system') {
+      const media = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = (event: MediaQueryListEvent) => setIsDark(event.matches);
+      media.addEventListener?.('change', handleChange);
+      return () => media.removeEventListener?.('change', handleChange);
+    }
   }, [theme]);
 
   const setTheme = (newTheme: ThemeMode) => {

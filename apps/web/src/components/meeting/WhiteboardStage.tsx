@@ -15,6 +15,11 @@ import {
   Triangle,
   Diamond,
   Grid3X3,
+  Hexagon,
+  Star,
+  Heart,
+  Octagon,
+  Cloud,
   Presentation,
   PanelRightClose,
   PanelRightOpen,
@@ -23,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../common/Button';
 import { ParticipantTile } from './ParticipantTile';
+import { useTheme } from '../../context/ThemeContext';
 import type { Participant, ConnectionQuality, DrawLinePayload, WhiteboardState, EraseRectPayload } from '@boom/types';
 
 interface WhiteboardStageProps {
@@ -88,13 +94,16 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   onEraseRect,
   onClose,
 }) => {
+  const { isDark } = useTheme();
+  const boardBackground = isDark ? '#0f172a' : '#ffffff';
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'rect-erase' | 'shape'>('pen');
-  const [selectedShape, setSelectedShape] = useState<'rectangle' | 'ellipse' | 'line' | 'arrow' | 'triangle' | 'diamond' | 'grid'>('rectangle');
+  const [selectedShape, setSelectedShape] = useState<'rectangle' | 'rounded-rectangle' | 'ellipse' | 'line' | 'arrow' | 'triangle' | 'diamond' | 'pentagon' | 'hexagon' | 'star' | 'heart' | 'octagon' | 'cloud' | 'grid'>('rectangle');
   const [gridRows, setGridRows] = useState(4);
   const [gridCols, setGridCols] = useState(4);
   const [selectedColor, setSelectedColor] = useState<string>('#ffffff');
@@ -129,13 +138,13 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.lineWidth = size;
-      ctx.strokeStyle = isEraser ? BOARD_BG : color;
+      ctx.strokeStyle = isEraser ? boardBackground : color;
       const startX = prevX * width;
       const startY = prevY * height;
       const endX = currX * width;
       const endY = currY * height;
       if (Math.abs(startX - endX) < 0.01 && Math.abs(startY - endY) < 0.01) {
-        ctx.fillStyle = isEraser ? BOARD_BG : color;
+        ctx.fillStyle = isEraser ? boardBackground : color;
         ctx.arc(startX, startY, Math.max(1, size / 2), 0, Math.PI * 2);
         ctx.fill();
       } else {
@@ -146,7 +155,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       ctx.closePath();
       ctx.restore();
     },
-    []
+    [boardBackground]
   );
 
   const paintBackground = useCallback(() => {
@@ -154,9 +163,9 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    ctx.fillStyle = BOARD_BG;
+    ctx.fillStyle = boardBackground;
     ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-  }, []);
+  }, [boardBackground]);
 
   // Redraw the entire board from the synced stroke history (used after
   // undo, clear, resize — anything where the canvas needs to be rebuilt).
@@ -389,6 +398,85 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
           makeSegment(cx, bottom, left, cy),
           makeSegment(left, cy, cx, top),
         );
+      } else if (selectedShape === 'rounded-rectangle') {
+        // Approximate a rounded rectangle with four straight sides and
+        // quarter-circle corner arcs.
+        const radius = Math.min(width, height) * 0.18;
+        const r = Math.min(radius, width / 2, height / 2);
+        const arcSteps = 12;
+        const corners = [
+          { cx: right - r, cy: top + r, start: -Math.PI / 2, end: 0 },
+          { cx: right - r, cy: bottom - r, start: 0, end: Math.PI / 2 },
+          { cx: left + r, cy: bottom - r, start: Math.PI / 2, end: Math.PI },
+          { cx: left + r, cy: top + r, start: Math.PI, end: Math.PI * 1.5 },
+        ];
+        segments.push(makeSegment(left + r, top, right - r, top));
+        for (const corner of corners) {
+          for (let i = 0; i < arcSteps; i++) {
+            const a1 = corner.start + ((corner.end - corner.start) * i) / arcSteps;
+            const a2 = corner.start + ((corner.end - corner.start) * (i + 1)) / arcSteps;
+            segments.push(makeSegment(
+              corner.cx + Math.cos(a1) * r,
+              corner.cy + Math.sin(a1) * r,
+              corner.cx + Math.cos(a2) * r,
+              corner.cy + Math.sin(a2) * r,
+            ));
+          }
+        }
+        segments.push(makeSegment(left + r, bottom, right - r, bottom));
+      } else if (selectedShape === 'pentagon' || selectedShape === 'hexagon' || selectedShape === 'octagon') {
+        const sides = selectedShape === 'pentagon' ? 5 : selectedShape === 'hexagon' ? 6 : 8;
+        const points: Array<{ x: number; y: number }> = [];
+        const radius = Math.min(width, height) / 2;
+        for (let i = 0; i < sides; i++) {
+          const angle = -Math.PI / 2 + (i * Math.PI * 2) / sides;
+          points.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+        }
+        for (let i = 0; i < points.length; i++) {
+          const a = points[i];
+          const b = points[(i + 1) % points.length];
+          segments.push(makeSegment(a.x, a.y, b.x, b.y));
+        }
+      } else if (selectedShape === 'star') {
+        const points: Array<{ x: number; y: number }> = [];
+        const outer = Math.min(width, height) / 2;
+        const inner = outer * 0.45;
+        for (let i = 0; i < 10; i++) {
+          const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+          const radius = i % 2 === 0 ? outer : inner;
+          points.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+        }
+        for (let i = 0; i < points.length; i++) {
+          const a = points[i];
+          const b = points[(i + 1) % points.length];
+          segments.push(makeSegment(a.x, a.y, b.x, b.y));
+        }
+      } else if (selectedShape === 'heart') {
+        const steps = 80;
+        let prev: { x: number; y: number } | null = null;
+        for (let i = 0; i <= steps; i++) {
+          const t = (i / steps) * Math.PI * 2;
+          const px = cx + (width * 0.46) * Math.pow(Math.sin(t), 3);
+          const py = cy - (height * 0.38) * (0.8 * Math.cos(t) - 0.35 * Math.cos(2 * t) - 0.18 * Math.cos(3 * t) - 0.08 * Math.cos(4 * t));
+          if (prev) segments.push(makeSegment(prev.x, prev.y, px, py));
+          prev = { x: px, y: py };
+        }
+      } else if (selectedShape === 'cloud') {
+        // A simple cloud made from connected arc-like points.
+        const pts: Array<{ x: number; y: number }> = [];
+        const addArc = (acx: number, acy: number, rx: number, ry: number, start: number, end: number, steps: number) => {
+          for (let i = 0; i <= steps; i++) {
+            const a = start + ((end - start) * i) / steps;
+            pts.push({ x: acx + Math.cos(a) * rx, y: acy + Math.sin(a) * ry });
+          }
+        };
+        addArc(left + width * 0.22, cy, width * 0.18, height * 0.25, Math.PI * 0.55, Math.PI * 1.55, 10);
+        addArc(left + width * 0.42, top + height * 0.42, width * 0.20, height * 0.32, Math.PI, Math.PI * 2, 12);
+        addArc(left + width * 0.66, top + height * 0.48, width * 0.17, height * 0.28, Math.PI, Math.PI * 2, 10);
+        addArc(right - width * 0.18, cy + height * 0.03, width * 0.18, height * 0.22, -Math.PI / 2, Math.PI / 2, 10);
+        pts.push({ x: left + width * 0.82, y: bottom }, { x: left + width * 0.18, y: bottom });
+        for (let i = 0; i < pts.length - 1; i++) segments.push(makeSegment(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y));
+        segments.push(makeSegment(pts[pts.length - 1].x, pts[pts.length - 1].y, pts[0].x, pts[0].y));
       } else if (selectedShape === 'grid') {
         for (let r = 0; r <= gridRows; r++) {
           const y = top + (height * r) / gridRows;
@@ -403,6 +491,40 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       return segments;
     },
     [selectedColor, selectedSize, selectedShape, gridRows, gridCols]
+  );
+
+  // Draw the currently dragged shape as a live, non-persistent preview.
+  // The preview is painted over a freshly redrawn board so it never becomes
+  // part of the synchronized whiteboard history until pointer-up.
+  const drawShapePreview = useCallback(
+    (x1: number, y1: number, x2: number, y2: number) => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      if (!canvas || !ctx) return;
+
+      const segments = getShapeSegments(x1, y1, x2, y2);
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvas.width / dpr;
+      const height = canvas.height / dpr;
+
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = selectedColor;
+      ctx.lineWidth = Math.max(1, selectedSize);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([8, 6]);
+
+      for (const seg of segments) {
+        ctx.beginPath();
+        ctx.moveTo(seg.prevX * width, seg.prevY * height);
+        ctx.lineTo(seg.currX * width, seg.currY * height);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    },
+    [getShapeSegments, selectedColor, selectedSize]
   );
 
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -450,6 +572,13 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
         w: Math.abs(x2px - x1px),
         h: Math.abs(y2px - y1px),
       });
+
+      // Shapes are previewed continuously while dragging. The actual shape
+      // is only committed to history on pointer-up.
+      if (activeTool === 'shape') {
+        redrawAll();
+        drawShapePreview(start.x, start.y, curr.x, curr.y);
+      }
       return;
     }
 
@@ -652,11 +781,18 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             <div className="flex items-center gap-1.5 px-2 py-1 bg-dark-surface rounded-xl border border-dark-border">
               {[
                 ['rectangle', Square],
+                ['rounded-rectangle', Square],
                 ['ellipse', Circle],
                 ['line', Minus],
                 ['arrow', ArrowUpRight],
                 ['triangle', Triangle],
                 ['diamond', Diamond],
+                ['pentagon', Hexagon],
+                ['hexagon', Hexagon],
+                ['octagon', Octagon],
+                ['star', Star],
+                ['heart', Heart],
+                ['cloud', Cloud],
                 ['grid', Grid3X3],
               ].map(([shape, Icon]: any) => (
                 <button
@@ -667,6 +803,22 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
                 >
                   <Icon className="w-4 h-4" />
                 </button>
+              ))}
+            </div>
+          )}
+
+          {/* Color Palette (Shapes) */}
+          {activeTool === 'shape' && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-dark-surface rounded-xl border border-dark-border" title="Shape color">
+              {COLORS.map((c) => (
+                <button
+                  key={`shape-${c}`}
+                  onClick={() => setSelectedColor(c)}
+                  className={`w-4 h-4 rounded-full transition-transform ${selectedColor === c ? 'scale-125 ring-2 ring-white' : 'hover:scale-110'}`}
+                  style={{ backgroundColor: c }}
+                  title={`Shape color ${c}`}
+                  aria-label={`Shape color ${c}`}
+                />
               ))}
             </div>
           )}
@@ -774,7 +926,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
         <div
           ref={containerRef}
           onScroll={handleContainerScroll}
-          className={`flex-1 bg-slate-900 rounded-2xl border border-dark-border overflow-y-auto overflow-x-hidden relative shadow-2xl touch-none ${canEdit ? 'cursor-crosshair' : 'cursor-default'}`}
+          className={`flex-1 bg-slate-900 boom-whiteboard-surface rounded-2xl border border-dark-border overflow-y-auto overflow-x-hidden relative shadow-2xl touch-none ${canEdit ? 'cursor-crosshair' : 'cursor-default'}`}
         >
           <canvas
             ref={canvasRef}
@@ -786,7 +938,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
           />
 
           {/* Rectangle-select eraser overlay (drag to mark an area for deletion) */}
-          {selectionRect && (
+          {selectionRect && activeTool === 'rect-erase' && (
             <div
               className="absolute border-2 border-dashed border-rose-400 bg-rose-400/10 pointer-events-none"
               style={{

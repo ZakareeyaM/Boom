@@ -1,137 +1,62 @@
 {
   "users": [
     {
-      "id": "guest_e3c16ff6-dc02-4b3b-93fe-03f01b1f7eba",
+      "id": "guest_73bf0a4e-8bad-472d-b3fd-889790ce7ca5",
       "name": "Host",
-      "email": "guest_guest_e3c16ff6-dc02-4b3b-93fe-03f01b1f7eba@boom.local",
+      "email": "guest_guest_73bf0a4e-8bad-472d-b3fd-889790ce7ca5@boom.local",
       "passwordHash": "guest_nologin",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-04T06:47:36.520Z",
-      "updatedAt": "2026-09-04T06:47:36.520Z"
+      "createdAt": "2026-09-04T08:02:54.985Z",
+      "updatedAt": "2026-09-04T08:02:54.985Z"
     },
     {
-      "id": "guest_e8fc6ef5-ace2-465d-8181-0d5b8824f6a9",
+      "id": "guest_66286d65-87d7-4eaf-a831-c313f291d621",
       "name": "Host",
-      "email": "guest_guest_e8fc6ef5-ace2-465d-8181-0d5b8824f6a9@boom.local",
+      "email": "guest_guest_66286d65-87d7-4eaf-a831-c313f291d621@boom.local",
       "passwordHash": "guest_nologin",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-04T06:50:40.863Z",
-      "updatedAt": "2026-09-04T06:50:40.863Z"
+      "createdAt": "2026-09-04T08:04:02.897Z",
+      "updatedAt": "2026-09-04T08:04:02.897Z"
     }
   ],
   "meetings": [
     {
-      "id": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
-      "meetingCode": "78DY-CKJ2",
-      "hostId": "guest_e3c16ff6-dc02-4b3b-93fe-03f01b1f7eba",
+      "id": "meet_f9113072-fb8a-4fbd-8493-c4553d315ccb",
+      "meetingCode": "HQ58-VRFZ",
+      "hostId": "guest_73bf0a4e-8bad-472d-b3fd-889790ce7ca5",
       "title": "Quick Meeting",
       "status": "ENDED",
-      "createdAt": "2026-09-04T06:47:36.529Z",
-      "endedAt": "2026-09-04T06:50:38.854Z"
+      "createdAt": "2026-09-04T08:02:54.990Z",
+      "endedAt": "2026-09-04T08:03:41.868Z"
     },
     {
-      "id": "meet_38583c77-016e-4af3-aa3d-27baaaaad08f",
-      "meetingCode": "XVUU-229B",
-      "hostId": "guest_e8fc6ef5-ace2-465d-8181-0d5b8824f6a9",
+      "id": "meet_b4fd4a3d-4f20-4370-9829-33a547e8172e",
+      "meetingCode": "RGZQ-V7C2",
+      "hostId": "guest_66286d65-87d7-4eaf-a831-c313f291d621",
       "title": "Quick Meeting",
       "status": "ACTIVE",
-      "createdAt": "2026-09-04T06:50:40.866Z"
+      "createdAt": "2026-09-04T08:04:02.898Z"
     }
   ],
   "participants": [
     {
-      "id": "UWjOferXC_i5umihAAAC",
-      "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
+      "id": "HCgh-1EOy2VFy8v7AAAC",
+      "meetingId": "meet_f9113072-fb8a-4fbd-8493-c4553d315ccb",
       "userId": null,
-      "displayName": "Zak",
+      "displayName": "dfghj",
       "isHost": true,
-      "joinedAt": "2026-09-04T06:47:44.008Z",
-      "leftAt": "2026-09-04T06:50:38.856Z"
+      "joinedAt": "2026-09-04T08:02:57.310Z",
+      "leftAt": "2026-09-04T08:03:41.871Z"
     },
     {
-      "id": "SqaoLXcvGIilOO4_AAAF",
-      "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
+      "id": "w1vOaQqqgoLpJ87oAAAF",
+      "meetingId": "meet_b4fd4a3d-4f20-4370-9829-33a547e8172e",
       "userId": null,
-      "displayName": "Jonny boy",
-      "isHost": false,
-      "joinedAt": "2026-09-04T06:47:55.763Z",
-      "leftAt": "2026-09-04T06:50:38.857Z"
-    },
-    {
-      "id": "dJS6YmiNGctqk0PnAAAI",
-      "meetingId": "meet_38583c77-016e-4af3-aa3d-27baaaaad08f",
-      "userId": null,
-      "displayName": "vb",
+      "displayName": "drtyhj",
       "isHost": true,
-      "joinedAt": "2026-09-04T06:50:43.545Z",
-      "leftAt": "2026-09-04T06:52:33.528Z"
-    },
-    {
-      "id": "CJTUoAGvFvaVxkzPAAAL",
-      "meetingId": "meet_38583c77-016e-4af3-aa3d-27baaaaad08f",
-      "userId": null,
-      "displayName": "vbnm",
-      "isHost": false,
-      "joinedAt": "2026-09-04T06:50:58.185Z",
-      "leftAt": "2026-09-04T06:52:26.576Z"
+      "joinedAt": "2026-09-04T08:04:05.220Z",
+      "leftAt": "2026-09-04T08:09:04.151Z"
     }
   ],
-  "messages": {
-    "meet_04902dad-dc3f-4a38-aff2-912a96c79776": [
-      {
-        "id": "msg_d9e569c3-3aab-444b-ae17-edf35adef730",
-        "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
-        "senderId": "UWjOferXC_i5umihAAAC",
-        "senderName": "Zak",
-        "isHost": true,
-        "message": "hello",
-        "createdAt": "2026-09-04T06:50:03.151Z"
-      },
-      {
-        "id": "msg_1ba2dcc1-edb8-4d02-96f7-bbe8368b0668",
-        "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
-        "senderId": "UWjOferXC_i5umihAAAC",
-        "senderName": "Zak",
-        "isHost": true,
-        "message": "how are yu",
-        "createdAt": "2026-09-04T06:50:06.812Z"
-      },
-      {
-        "id": "msg_3eecb1f0-85dc-457e-8e73-220222429097",
-        "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
-        "senderId": "UWjOferXC_i5umihAAAC",
-        "senderName": "Zak",
-        "isHost": true,
-        "message": "today",
-        "createdAt": "2026-09-04T06:50:10.072Z"
-      },
-      {
-        "id": "msg_b9f969a9-aff2-4d9a-82a4-c5d21f1d7cb1",
-        "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
-        "senderId": "UWjOferXC_i5umihAAAC",
-        "senderName": "Zak",
-        "isHost": true,
-        "message": "whats the best thing to eat on an empty stomach",
-        "createdAt": "2026-09-04T06:50:18.230Z"
-      },
-      {
-        "id": "msg_729a8792-0bcb-4836-9153-46de70c7fd5c",
-        "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
-        "senderId": "SqaoLXcvGIilOO4_AAAF",
-        "senderName": "Jonny boy",
-        "isHost": false,
-        "message": "idk",
-        "createdAt": "2026-09-04T06:50:25.147Z"
-      },
-      {
-        "id": "msg_ee0ca45a-a405-4f18-a398-2a20eea7b3bf",
-        "meetingId": "meet_04902dad-dc3f-4a38-aff2-912a96c79776",
-        "senderId": "SqaoLXcvGIilOO4_AAAF",
-        "senderName": "Jonny boy",
-        "isHost": false,
-        "message": "what?",
-        "createdAt": "2026-09-04T06:50:28.300Z"
-      }
-    ]
-  }
+  "messages": {}
 }
