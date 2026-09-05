@@ -1,35 +1,35 @@
 {
   "users": [
     {
-      "id": "guest_14009e93-b548-4bdc-9f59-ae2f0689d012",
+      "id": "guest_83c1e892-23c7-4063-8fae-854b20373937",
       "name": "Host",
-      "email": "guest_guest_14009e93-b548-4bdc-9f59-ae2f0689d012@boom.local",
+      "email": "guest_guest_83c1e892-23c7-4063-8fae-854b20373937@boom.local",
       "passwordHash": "guest_nologin",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-04T17:17:36.303Z",
-      "updatedAt": "2026-09-04T17:17:36.303Z"
+      "createdAt": "2026-09-05T12:09:16.734Z",
+      "updatedAt": "2026-09-05T12:09:16.734Z"
     }
   ],
   "meetings": [
     {
-      "id": "meet_c6c64e6b-7c4d-4869-97f2-33019969449e",
-      "meetingCode": "R8K3-HU95",
-      "hostId": "guest_14009e93-b548-4bdc-9f59-ae2f0689d012",
+      "id": "meet_de18b03f-3dae-4f86-ac93-c0f674732f4c",
+      "meetingCode": "KR2N-P5BG",
+      "hostId": "guest_83c1e892-23c7-4063-8fae-854b20373937",
       "title": "Quick Meeting",
       "status": "ENDED",
-      "createdAt": "2026-09-04T17:17:36.309Z",
-      "endedAt": "2026-09-04T17:21:20.187Z"
+      "createdAt": "2026-09-05T12:09:16.740Z",
+      "endedAt": "2026-09-05T12:11:51.745Z"
     }
   ],
   "participants": [
     {
-      "id": "el4ud0NUfl_OuknIAAAC",
-      "meetingId": "meet_c6c64e6b-7c4d-4869-97f2-33019969449e",
+      "id": "oLBNw0ickhqB7cVcAAAC",
+      "meetingId": "meet_de18b03f-3dae-4f86-ac93-c0f674732f4c",
       "userId": null,
       "displayName": "Zak",
       "isHost": true,
-      "joinedAt": "2026-09-04T17:17:40.880Z",
-      "leftAt": "2026-09-04T17:21:20.188Z"
+      "joinedAt": "2026-09-05T12:09:19.052Z",
+      "leftAt": "2026-09-05T12:11:51.751Z"
     }
   ],
   "messages": {}

@@ -550,6 +550,14 @@ export class RoomManager {
       this.io.to(meetingCode).emit('whiteboard:textUpdate',{text});
     });
 
+    socket.on('whiteboard:textDelete', ({ textId }) => {
+      const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
+      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!room.whiteboardTexts.some(x=>x.id===textId)) return;
+      room.whiteboardTexts = room.whiteboardTexts.filter(x=>x.id!==textId);
+      this.io.to(meetingCode).emit('whiteboard:textDelete',{textId});
+    });
+
     socket.on('whiteboard:shape', ({ shape }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
@@ -583,8 +591,10 @@ export class RoomManager {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
       const inRect=(x:number,y:number)=>x>=Math.min(rect.x1,rect.x2)&&x<=Math.max(rect.x1,rect.x2)&&y>=Math.min(rect.y1,rect.y2)&&y<=Math.max(rect.y1,rect.y2);
-      room.whiteboardHistory=room.whiteboardHistory.map(stroke=>stroke.filter(seg=>!inRect((seg.prevX+seg.currX)/2,(seg.prevY+seg.currY)/2))).filter(Boolean); room.whiteboardRedo=[];
-      this.io.to(meetingCode).emit('whiteboard:snapshot',{history:room.whiteboardHistory,asset:room.whiteboardAsset,texts:room.whiteboardTexts});
+      room.whiteboardHistory=room.whiteboardHistory.map(stroke=>stroke.filter(seg=>!inRect((seg.prevX+seg.currX)/2,(seg.prevY+seg.currY)/2))).filter(Boolean);
+      room.whiteboardTexts = room.whiteboardTexts.filter(text => !inRect(text.x, text.y));
+      room.whiteboardRedo=[];
+      this.io.to(meetingCode).emit('whiteboard:snapshot',{history:room.whiteboardHistory,asset:room.whiteboardAsset,texts:room.whiteboardTexts,shapes:room.whiteboardShapes});
     });
 
     socket.on('whiteboard:cursor', ({ x, y, visible }) => {

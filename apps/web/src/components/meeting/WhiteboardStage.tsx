@@ -62,6 +62,7 @@ interface WhiteboardStageProps {
   onShapeUpdate?: (shape: WhiteboardShape) => void;
   onShapeDelete?: (shapeId: string) => void;
   onTextUpdate?: (text: WhiteboardText) => void;
+  onTextDelete?: (textId: string) => void;
   remoteCursors?: Map<string, WhiteboardCursor>;
   onCursor?: (cursor: Omit<WhiteboardCursor,'participantId'|'displayName'>) => void;
   onAsset?: (asset: WhiteboardAsset | null) => void;
@@ -117,6 +118,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   onAsset,
   onText,
   onTextUpdate,
+  onTextDelete,
   whiteboardShapes = [],
   onShape,
   onShapeUpdate,
@@ -133,8 +135,20 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
   const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'rect-erase' | 'shape' | 'text'>('pen');
   const [textDraft, setTextDraft] = useState('');
+  const textEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const [textInsertPos, setTextInsertPos] = useState<{x:number;y:number}|null>(null);
   const [editingTextId, setEditingTextId] = useState<string|null>(null);
+  const erasedTextIdsRef = useRef<Set<string>>(new Set());
+  // Focus the editor only after React has mounted it. Using a ref is more reliable
+  // than querying the DOM/requestAnimationFrame, especially when the board is scrolling.
+  useEffect(() => {
+    if (!textInsertPos || !canEdit) return;
+    const editor = textEditorRef.current;
+    if (!editor) return;
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+  }, [textInsertPos, canEdit]);
+
   const [selectedObjectId, setSelectedObjectId] = useState<string|null>(null);
   const [graphXMin, setGraphXMin] = useState(-5);
   const [graphXMax, setGraphXMax] = useState(5);
@@ -142,7 +156,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const [graphYMax, setGraphYMax] = useState(5);
   const [graphXInterval, setGraphXInterval] = useState(1);
   const [graphYInterval, setGraphYInterval] = useState(1);
-  const [selectedShape, setSelectedShape] = useState<'rectangle' | 'rounded-rectangle' | 'ellipse' | 'line' | 'arrow' | 'triangle' | 'diamond' | 'pentagon' | 'hexagon' | 'star' | 'heart' | 'octagon' | 'cloud' | 'grid' | 'graph'>('rectangle');
+  const [selectedShape, setSelectedShape] = useState<'rectangle' | 'rounded-rectangle' | 'ellipse' | 'line' | 'arrow' | 'triangle' | 'diamond' | 'pentagon' | 'hexagon' | 'octagon' | 'star' | 'heart' | 'cloud' | 'grid' | 'graph'>('rectangle');
   const [gridRows, setGridRows] = useState(4);
   const [gridCols, setGridCols] = useState(4);
   const [selectedColor, setSelectedColor] = useState<string>('#ffffff');
@@ -212,11 +226,15 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   // Redraw the entire board from the synced stroke history (used after
   // undo, clear, resize — anything where the canvas needs to be rebuilt).
   const redrawAll = useCallback(() => {
+    // Text objects are rendered by WhiteboardObjectsLayer (SVG). Do not also
+    // paint them onto the canvas, otherwise every text object appears twice.
     paintBackground();
-    for (const stroke of allStrokesRef.current) for (const seg of stroke) drawSegment(seg.prevX, seg.prevY, seg.currX, seg.currY, seg.color, seg.size, seg.isEraser);
-    const canvas = canvasRef.current; const ctx = canvas?.getContext('2d');
-    if (canvas && ctx) { const dpr = window.devicePixelRatio || 1; const w = canvas.width / dpr; const h = canvas.height / dpr; ctx.save(); ctx.textBaseline='top'; for (const t of whiteboardTexts) { ctx.fillStyle=t.color; ctx.font=`${t.size}px Inter, Arial, sans-serif`; ctx.fillText(t.text,t.x*w,t.y*h); } ctx.restore(); }
-  }, [drawSegment, paintBackground, whiteboardTexts]);
+    for (const stroke of allStrokesRef.current) {
+      for (const seg of stroke) {
+        drawSegment(seg.prevX, seg.prevY, seg.currX, seg.currY, seg.color, seg.size, seg.isEraser);
+      }
+    }
+  }, [drawSegment, paintBackground]);
 
   // Initialize / resize canvas. Width tracks the container; height is a
   // fixed tall value so the board scrolls vertically like a document.
@@ -533,29 +551,11 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
           const x = left + (width * c) / gridCols;
           segments.push(makeSegment(x, top, x, bottom));
         }
-      } else if (selectedShape === 'graph') {
-        // XY axis graph: draw axes plus interval tick gridlines.
-        segments.push(makeSegment(left, cy, right, cy));
-        segments.push(makeSegment(cx, top, cx, bottom));
-        const xRange = graphXMax - graphXMin;
-        const yRange = graphYMax - graphYMin;
-        if (xRange > 0 && graphXInterval > 0) {
-          for (let v = graphXMin; v <= graphXMax; v += graphXInterval) {
-            const x = left + ((v - graphXMin) / xRange) * width;
-            segments.push(makeSegment(x, cy - height * 0.01, x, cy + height * 0.01));
-          }
-        }
-        if (yRange > 0 && graphYInterval > 0) {
-          for (let v = graphYMin; v <= graphYMax; v += graphYInterval) {
-            const y = bottom - ((v - graphYMin) / yRange) * height;
-            segments.push(makeSegment(cx - width * 0.01, y, cx + width * 0.01, y));
-          }
-        }
       }
 
       return segments;
     },
-    [selectedColor, selectedSize, selectedShape, gridRows, gridCols, graphXMin, graphXMax, graphYMin, graphYMax, graphXInterval, graphYInterval]
+    [selectedColor, selectedSize, selectedShape, gridRows, gridCols]
   );
 
   // Draw the currently dragged shape as a live, non-persistent preview.
@@ -592,18 +592,81 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     [getShapeSegments, selectedColor, selectedSize]
   );
 
+  const commitText = useCallback(() => {
+    if (!textInsertPos) return;
+    const value = textDraft;
+    if (value.trim()) {
+      onText?.({
+        id: `text-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        text: value,
+        x: textInsertPos.x,
+        y: textInsertPos.y,
+        color: selectedColor,
+        size: Math.max(14, selectedSize * 4),
+        rotation: 0,
+      });
+    }
+    setTextDraft('');
+    setTextInsertPos(null);
+    setEditingTextId(null);
+  }, [onText, selectedColor, selectedSize, textDraft, textInsertPos]);
+
+  // Eraser hit-testing for text objects. Text lives in the SVG object layer,
+  // so the freehand eraser needs its own hit-test when the canvas receives the
+  // pointer event. The bounds are deliberately generous to make erasing easy.
+  const eraseTextAtPoint = useCallback((point: { x: number; y: number }) => {
+    if (!onTextDelete || whiteboardTexts.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const boardWidth = canvas.width / dpr;
+    const boardHeight = canvas.height / dpr;
+    const px = point.x * boardWidth;
+    const py = point.y * boardHeight;
+    const padding = Math.max(eraserSize / 2, 6);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    for (const text of whiteboardTexts) {
+      if (erasedTextIdsRef.current.has(text.id)) continue;
+      ctx.save();
+      ctx.font = `${text.size}px Inter, Arial, sans-serif`;
+      const lines = text.text.split('\n');
+      const width = Math.max(1, ...lines.map(line => ctx.measureText(line).width));
+      const lineHeight = text.size * 1.2;
+      const left = text.x * boardWidth - padding;
+      const right = text.x * boardWidth + width + padding;
+      const top = text.y * boardHeight - text.size - padding;
+      const bottom = text.y * boardHeight + Math.max(lineHeight, lines.length * lineHeight) + padding;
+      ctx.restore();
+
+      // Axis-aligned bounds are used for rotated text too; this makes the
+      // eraser forgiving rather than requiring a precise rotation calculation.
+      if (px >= left && px <= right && py >= top && py <= bottom) {
+        erasedTextIdsRef.current.add(text.id);
+        onTextDelete(text.id);
+      }
+    }
+  }, [eraserSize, onTextDelete, whiteboardTexts]);
+
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canEdit) return;
     const point = getCoordinates(e);
-    canvasRef.current?.setPointerCapture?.(e.pointerId);
+    if (activeTool === 'eraser') {
+      erasedTextIdsRef.current.clear();
+      eraseTextAtPoint(point);
+    }
     if (activeTool === 'text') {
       // Word-like text insertion: click exactly where the text should begin.
       setEditingTextId(null);
       setTextDraft('');
       setTextInsertPos(point);
-      requestAnimationFrame(() => document.getElementById('boom-text-editor')?.focus());
+      // Do not capture the canvas pointer for text. The textarea is a real HTML
+      // input layered above the canvas and is focused after it mounts.
       return;
     }
+
+    canvasRef.current?.setPointerCapture?.(e.pointerId);
 
     if (activeTool === 'rect-erase' || activeTool === 'shape') {
       selectionStartRef.current = point;
@@ -629,6 +692,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const point = getCoordinates(e); setPointerPos(point); onCursor?.({ x: point.x, y: point.y, visible: true });
     if (!canEdit) return;
+    if (activeTool === 'eraser') eraseTextAtPoint(point);
     try { canvasRef.current?.releasePointerCapture?.(e.pointerId); } catch {}
     if (activeTool === 'rect-erase' || activeTool === 'shape') {
       if (!selectionStartRef.current) return;
@@ -696,6 +760,20 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
           const rect: EraseRectPayload = { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
           if (dx > 0.002 || dy > 0.002) {
             applyEraseRect(rect);
+            // Delete text objects whose insertion point is inside the selected
+            // rectangle as well as the drawn strokes. The server mirrors this
+            // operation for everyone else in the meeting.
+            if (onTextDelete) {
+              const x1 = Math.min(rect.x1, rect.x2);
+              const x2 = Math.max(rect.x1, rect.x2);
+              const y1 = Math.min(rect.y1, rect.y2);
+              const y2 = Math.max(rect.y1, rect.y2);
+              for (const text of whiteboardTexts) {
+                if (text.x >= x1 && text.x <= x2 && text.y >= y1 && text.y <= y2) {
+                  onTextDelete(text.id);
+                }
+              }
+            }
             onEraseRect(rect);
           }
         } else if (dx > 0.003 || dy > 0.003) {
@@ -712,6 +790,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
       }
       selectionStartRef.current = null;
       setSelectionRect(null);
+      erasedTextIdsRef.current.clear();
       return;
     }
 
@@ -722,6 +801,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     }
     isDrawingRef.current = false;
     lastPointRef.current = null;
+    erasedTextIdsRef.current.clear();
   };
 
   // Broadcast our scroll position when we're the host, so viewers stay on
@@ -1076,34 +1156,71 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             onSelect={setSelectedObjectId}
             onShapeUpdate={(shape)=>onShapeUpdate?.(shape)}
             onTextUpdate={(text)=>onTextUpdate?.(text)}
+            onTextDelete={onTextDelete}
+            interactionEnabled={activeTool !== 'shape' && activeTool !== 'text' && activeTool !== 'eraser'}
           />
           {textInsertPos && canEdit && (
-            <textarea
-              id="boom-text-editor"
-              autoFocus
-              value={textDraft}
-              onChange={e=>setTextDraft(e.target.value)}
-              onPointerDown={e=>e.stopPropagation()}
-              onPointerMove={e=>e.stopPropagation()}
-              onFocus={()=>setActiveTool('text')}
-              onKeyDown={e=>{
-                if(e.key==='Escape'){setTextDraft('');setTextInsertPos(null);return;}
-                if(e.key==='Enter' && !e.shiftKey){
-                  e.preventDefault();
-                  if(textDraft.trim()){
-                    onText?.({id:`text-${Date.now()}-${Math.random().toString(36).slice(2)}`,text:textDraft,x:textInsertPos.x,y:textInsertPos.y,color:selectedColor,size:Math.max(14,selectedSize*4),rotation:0});
+            <div
+              className="absolute z-[70] pointer-events-auto"
+              style={{
+                left: `${textInsertPos.x * 100}%`,
+                top: `${textInsertPos.y * BOARD_HEIGHT}px`,
+                transform: 'translate(0, 0)',
+              }}
+              onPointerDown={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              onClick={e => e.stopPropagation()}
+            >
+              <textarea
+                ref={textEditorRef}
+                id="boom-text-editor"
+                value={textDraft}
+                onChange={e => setTextDraft(e.target.value)}
+                onPointerDown={e => e.stopPropagation()}
+                onPointerMove={e => e.stopPropagation()}
+                onPointerUp={e => e.stopPropagation()}
+                onFocus={() => setActiveTool('text')}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setTextDraft('');
+                    setTextInsertPos(null);
+                    return;
                   }
-                  setTextDraft('');setTextInsertPos(null);
-                }
-              }}
-              onBlur={()=>{
-                if(textDraft.trim()){onText?.({id:`text-${Date.now()}-${Math.random().toString(36).slice(2)}`,text:textDraft,x:textInsertPos.x,y:textInsertPos.y,color:selectedColor,size:Math.max(14,selectedSize*4),rotation:0});}
-                setTextDraft('');setTextInsertPos(null);
-              }}
-              className="absolute z-[70] min-w-[220px] min-h-[42px] resize-none bg-transparent border-2 border-brand-500 rounded-md outline-none px-2 py-1 text-white leading-tight"
-              style={{left:`${textInsertPos.x*100}%`,top:`${textInsertPos.y*BOARD_HEIGHT}px`,color:selectedColor,fontSize:Math.max(14,selectedSize*4),lineHeight:1.2}}
-              placeholder="Type here…"
-            />
+
+                  // Ctrl/Cmd + Enter commits. Plain Enter creates a new line.
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    commitText();
+                  }
+                }}
+                className="block min-w-[260px] min-h-[52px] resize both bg-transparent border-2 border-brand-500 rounded-md outline-none px-2 py-1 leading-tight pointer-events-auto select-text"
+                style={{
+                  color: selectedColor,
+                  fontSize: Math.max(14, selectedSize * 4),
+                  lineHeight: 1.2,
+                }}
+                placeholder="Type here…"
+                rows={2}
+                spellCheck
+              />
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-[11px] text-slate-400">
+                  Enter = new line · Ctrl+Enter = finish
+                </span>
+                <button
+                  type="button"
+                  className="ml-auto rounded-md bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:opacity-90"
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => {
+                    e.stopPropagation();
+                    commitText();
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
           )}
 
           <canvas

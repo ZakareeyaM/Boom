@@ -162,6 +162,7 @@ export const MeetingRoomPage: React.FC = () => {
     sendWhiteboardAsset,
     sendWhiteboardText,
     sendWhiteboardTextUpdate,
+    sendWhiteboardTextDelete,
     sendWhiteboardShape,
     sendWhiteboardShapeUpdate,
     sendWhiteboardShapeDelete,
@@ -197,6 +198,7 @@ export const MeetingRoomPage: React.FC = () => {
     onWhiteboardSnapshot: (history, asset, texts, shapes) => { setWhiteboardHistory(history); setWhiteboardAsset(asset); setWhiteboardTexts(texts); setWhiteboardShapes(shapes || []); },
     onWhiteboardText: (text) => setWhiteboardTexts(prev => [...prev.filter(t => t.id !== text.id), text]),
     onWhiteboardTextUpdate: (text) => setWhiteboardTexts(prev => prev.map(t => t.id === text.id ? text : t)),
+    onWhiteboardTextDelete: (textId) => setWhiteboardTexts(prev => prev.filter(t => t.id !== textId)),
     onWhiteboardShape: (shape) => setWhiteboardShapes(prev => [...prev.filter(s => s.id !== shape.id), shape]),
     onWhiteboardShapeDelete: (shapeId) => setWhiteboardShapes(prev => prev.filter(s => s.id !== shapeId)),
     onWhiteboardAsset: (asset) => setWhiteboardAsset(asset),
@@ -341,6 +343,7 @@ export const MeetingRoomPage: React.FC = () => {
             whiteboardShapes={whiteboardShapes}
             onText={sendWhiteboardText}
             onTextUpdate={sendWhiteboardTextUpdate}
+            onTextDelete={(textId) => { setWhiteboardTexts(prev => prev.filter(t => t.id !== textId)); sendWhiteboardTextDelete(textId); }}
             onShape={sendWhiteboardShape}
             onShapeUpdate={(shape)=>{setWhiteboardShapes(prev=>prev.map(s=>s.id===shape.id?shape:s));sendWhiteboardShapeUpdate(shape);}}
             onShapeDelete={sendWhiteboardShapeDelete}

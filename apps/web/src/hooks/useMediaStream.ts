@@ -150,26 +150,76 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
     setAudioEnabled(enabled);
   }, []);
 
-  // Toggle Camera
-  const toggleVideo = useCallback(() => {
-    if (!streamRef.current) return;
-    const videoTrack = streamRef.current.getVideoTracks()[0];
-    if (videoTrack) {
-      const newState = !videoTrack.enabled;
-      videoTrack.enabled = newState;
-      setVideoEnabled(newState);
-    } else {
-      setVideoEnabled((prev) => !prev);
-    }
-  }, []);
+  // Camera control deliberately stops the video track when the camera is
+  // disabled. Setting track.enabled=false only stops frames; browsers may
+  // keep the physical camera capture active (and therefore keep its LED on).
+  // Stopping the track releases the camera device. Re-enabling acquires a new
+  // video track and replaces it in the local MediaStream.
+  const setVideoState = useCallback(async (enabled: boolean) => {
+    const currentStream = streamRef.current;
 
-  // Set camera state explicitly (e.g. when the host disables your camera).
-  const setVideoState = useCallback((enabled: boolean) => {
-    if (!streamRef.current) return;
-    const videoTrack = streamRef.current.getVideoTracks()[0];
-    if (videoTrack) videoTrack.enabled = enabled;
-    setVideoEnabled(enabled);
-  }, []);
+    if (!enabled) {
+      const videoTracks = currentStream?.getVideoTracks() || [];
+      videoTracks.forEach((track) => {
+        track.enabled = false;
+        track.stop();
+      });
+
+      if (currentStream) {
+        const audioTracks = currentStream.getAudioTracks();
+        const nextStream = new MediaStream(audioTracks);
+        streamRef.current = nextStream;
+        setStream(nextStream);
+      }
+
+      videoEnabledRef.current = false;
+      setVideoEnabled(false);
+      await updateDevices();
+      return;
+    }
+
+    // Already has a live video track.
+    const existing = currentStream?.getVideoTracks().find((track) => track.readyState === 'live');
+    if (existing) {
+      existing.enabled = true;
+      videoEnabledRef.current = true;
+      setVideoEnabled(true);
+      return;
+    }
+
+    try {
+      const videoConstraints: MediaTrackConstraints = selectedVideoId
+        ? { deviceId: { exact: selectedVideoId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+      const cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+      const newVideoTrack = cameraStream.getVideoTracks()[0];
+      if (!newVideoTrack) throw new Error('No video track was returned by the camera.');
+
+      const audioTracks = streamRef.current?.getAudioTracks() || [];
+      const nextStream = new MediaStream([...audioTracks, newVideoTrack]);
+      streamRef.current = nextStream;
+      setStream(nextStream);
+      videoEnabledRef.current = true;
+      setVideoEnabled(true);
+      setError(null);
+      await updateDevices();
+    } catch (err: any) {
+      console.error('Failed to re-enable camera:', err);
+      setVideoEnabled(false);
+      videoEnabledRef.current = false;
+      setError({
+        type: err?.name === 'NotAllowedError' ? 'denied' : 'unknown',
+        message: err?.name === 'NotAllowedError'
+          ? 'Camera permission was denied. Please allow camera access and try again.'
+          : 'Boom could not turn your camera back on. Please check that the camera is available.',
+      });
+    }
+  }, [selectedVideoId, updateDevices]);
+
+  const toggleVideo = useCallback(() => {
+    void setVideoState(!videoEnabledRef.current);
+  }, [setVideoState]);
 
   // Switch Audio Input Device
   const switchAudioDevice = useCallback(

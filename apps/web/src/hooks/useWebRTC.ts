@@ -43,6 +43,7 @@ interface UseWebRTCProps {
   onWhiteboardAsset?: (asset: WhiteboardAsset | null) => void;
   onWhiteboardShape?: (shape: WhiteboardShape) => void;
   onWhiteboardTextUpdate?: (text: WhiteboardText) => void;
+  onWhiteboardTextDelete?: (textId: string) => void;
   onWhiteboardShapeDelete?: (shapeId: string) => void;
   onScreenShareForceStop?: (reason: string) => void;
 }
@@ -78,6 +79,7 @@ export function useWebRTC({
   onWhiteboardAsset,
   onWhiteboardShape,
   onWhiteboardTextUpdate,
+  onWhiteboardTextDelete,
   onWhiteboardShapeDelete,
   onScreenShareForceStop,
 }: UseWebRTCProps) {
@@ -123,6 +125,7 @@ export function useWebRTC({
   const onWhiteboardAssetRef = useRef(onWhiteboardAsset);
   const onWhiteboardShapeRef = useRef(onWhiteboardShape);
   const onWhiteboardTextUpdateRef = useRef(onWhiteboardTextUpdate);
+  const onWhiteboardTextDeleteRef = useRef(onWhiteboardTextDelete);
   const onWhiteboardShapeDeleteRef = useRef(onWhiteboardShapeDelete);
   const onScreenShareForceStopRef = useRef(onScreenShareForceStop);
 
@@ -148,6 +151,7 @@ export function useWebRTC({
   onWhiteboardAssetRef.current = onWhiteboardAsset;
   onWhiteboardShapeRef.current = onWhiteboardShape;
   onWhiteboardTextUpdateRef.current = onWhiteboardTextUpdate;
+  onWhiteboardTextDeleteRef.current = onWhiteboardTextDelete;
   onWhiteboardShapeDeleteRef.current = onWhiteboardShapeDelete;
   onScreenShareForceStopRef.current = onScreenShareForceStop;
 
@@ -452,6 +456,7 @@ export function useWebRTC({
     socket.on('whiteboard:asset', ({ asset }) => { onWhiteboardAssetRef.current?.(asset); });
     socket.on('whiteboard:text', ({ text }) => { onWhiteboardTextRef.current?.(text); });
     socket.on('whiteboard:textUpdate', ({ text }) => { onWhiteboardTextUpdateRef.current?.(text); });
+    socket.on('whiteboard:textDelete', ({ textId }) => { onWhiteboardTextDeleteRef.current?.(textId); });
     socket.on('whiteboard:shape', ({ shape }) => { onWhiteboardShapeRef.current?.(shape); });
     socket.on('whiteboard:shapeUpdate', ({ shape }) => { onWhiteboardShapeRef.current?.(shape); });
     socket.on('whiteboard:shapeDelete', ({ shapeId }) => { onWhiteboardShapeDeleteRef.current?.(shapeId); });
@@ -530,9 +535,12 @@ export function useWebRTC({
           (t) => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video'
         )?.sender;
 
-      if (videoSender && videoTrack) {
-        videoSender.replaceTrack(videoTrack).catch(console.error);
-      } else if (!videoSender && videoTrack) {
+      if (videoSender) {
+        // When camera capture is stopped, explicitly detach the sender so the
+        // remote peer stops receiving the ended camera track. Screen sharing
+        // remains unaffected because activeStream is the screen stream then.
+        videoSender.replaceTrack(videoTrack || null).catch(console.error);
+      } else if (videoTrack) {
         pc.addTrack(videoTrack, activeStream);
       }
 
@@ -666,6 +674,7 @@ export function useWebRTC({
   const sendWhiteboardAsset = useCallback((asset: WhiteboardAsset | null) => { socketRef.current?.emit('whiteboard:asset', { asset }); }, []);
   const sendWhiteboardText = useCallback((text: WhiteboardText) => { socketRef.current?.emit('whiteboard:text', { text }); }, []);
   const sendWhiteboardTextUpdate = useCallback((text: WhiteboardText) => { socketRef.current?.emit('whiteboard:textUpdate', { text }); }, []);
+  const sendWhiteboardTextDelete = useCallback((textId: string) => { socketRef.current?.emit('whiteboard:textDelete', { textId }); }, []);
   const sendWhiteboardShape = useCallback((shape: WhiteboardShape) => { socketRef.current?.emit('whiteboard:shape', { shape }); }, []);
   const sendWhiteboardShapeUpdate = useCallback((shape: WhiteboardShape) => { socketRef.current?.emit('whiteboard:shapeUpdate', { shape }); }, []);
   const sendWhiteboardShapeDelete = useCallback((shapeId: string) => { socketRef.current?.emit('whiteboard:shapeDelete', { shapeId }); }, []);
@@ -712,6 +721,7 @@ export function useWebRTC({
     sendWhiteboardAsset,
     sendWhiteboardText,
     sendWhiteboardTextUpdate,
+    sendWhiteboardTextDelete,
     sendWhiteboardShape,
     sendWhiteboardShapeUpdate,
     sendWhiteboardShapeDelete,

@@ -11,7 +11,10 @@ interface Props {
   onSelect: (id: string | null) => void;
   onShapeUpdate: (shape: WhiteboardShape) => void;
   onTextUpdate: (text: WhiteboardText) => void;
+  onTextDelete?: (textId: string) => void;
   onLongPress?: (id: string, type: 'shape'|'text') => void;
+  /** When false, the layer is visual-only so drawing/text placement can pass through existing objects. */
+  interactionEnabled?: boolean;
 }
 
 const LONG_PRESS_MS = 550;
@@ -65,7 +68,10 @@ function ShapeGraphic({s,boardWidth,boardHeight}:{s:WhiteboardShape;boardWidth:n
 }
 
 
-export const WhiteboardObjectsLayer: React.FC<Props> = ({shapes,texts,boardHeight,boardWidth,canEdit,selectedId,onSelect,onShapeUpdate,onTextUpdate,onLongPress}) => {
+export const WhiteboardObjectsLayer: React.FC<Props> = ({
+  shapes,texts,boardHeight,boardWidth,canEdit,selectedId,onSelect,onShapeUpdate,onTextUpdate,onTextDelete,onLongPress,
+  interactionEnabled = true,
+}) => {
   const timers=useRef<Map<string,number>>(new Map());
   const svgRef=useRef<SVGSVGElement|null>(null);
   const [drag,setDrag]=useState<{id:string;type:'shape'|'text'|'rotate';startX:number;startY:number;orig:any;cx?:number;cy?:number}|null>(null);
@@ -77,9 +83,13 @@ export const WhiteboardObjectsLayer: React.FC<Props> = ({shapes,texts,boardHeigh
   const move=(e:React.PointerEvent)=>{if(!drag)return; const dx=(e.clientX-drag.startX)/boardWidth,dy=(e.clientY-drag.startY)/boardHeight;if(drag.type==='rotate'){const a=Math.atan2(e.clientY-(drag.cy||0),e.clientX-(drag.cx||0));const b=Math.atan2(drag.startY-(drag.cy||0),drag.startX-(drag.cx||0));onShapeUpdate({...drag.orig,rotation:(drag.orig.rotation||0)+(a-b)*180/Math.PI});return;} if(drag.type==='shape'){onShapeUpdate({...drag.orig,x:drag.orig.x+dx,y:drag.orig.y+dy});}else onTextUpdate({...drag.orig,x:drag.orig.x+dx,y:drag.orig.y+dy});};
   const end=(id:string)=>{const t=timers.current.get(id);if(t)clearTimeout(t);timers.current.delete(id);setProgress(null);setDrag(null);};
   return <svg ref={svgRef} className="absolute inset-0 z-20 pointer-events-none" width={boardWidth} height={boardHeight} viewBox={`0 0 ${boardWidth} ${boardHeight}`}>
-    <g className="pointer-events-auto" onPointerMove={move}>
+    <g className={interactionEnabled ? "pointer-events-auto" : "pointer-events-none"} onPointerMove={interactionEnabled ? move : undefined}>
       {shapes.map(s=><g key={s.id} transform={`rotate(${s.rotation} ${(s.x+s.width/2)*boardWidth} ${(s.y+s.height/2)*boardHeight})`} onPointerDown={e=>start(e,s.id,'shape',s)} onPointerMove={move} onPointerUp={()=>end(s.id)} onPointerCancel={()=>end(s.id)} style={{cursor:canEdit?'grab':'default'}}><ShapeGraphic s={s} boardWidth={boardWidth} boardHeight={boardHeight}/>{selectedId===s.id&&canEdit&&<circle cx={(s.x+s.width/2)*boardWidth} cy={s.y*boardHeight-16} r="6" fill="white" stroke={s.color} strokeWidth="2" onPointerDown={e=>{e.stopPropagation();(e.currentTarget as Element).setPointerCapture?.(e.pointerId);setDrag({id:s.id,type:'rotate',startX:e.clientX,startY:e.clientY,orig:{...s},cx:(s.x+s.width/2)*boardWidth,cy:(s.y+s.height/2)*boardHeight});}} onPointerUp={()=>end(s.id)}/>}</g>)}
-      {texts.map(t=><g key={t.id} transform={`rotate(${t.rotation||0} ${t.x*boardWidth} ${t.y*boardHeight})`} onPointerDown={e=>start(e,t.id,'text',t)} onPointerMove={move} onPointerUp={()=>end(t.id)} onPointerCancel={()=>end(t.id)} style={{cursor:canEdit?'grab':'default'}}><text x={t.x*boardWidth} y={t.y*boardHeight} fontSize={t.size} fill={t.color}>{t.text}</text></g>)}
+      {texts.map(t=><g key={t.id} transform={`rotate(${t.rotation||0} ${t.x*boardWidth} ${t.y*boardHeight})`} onPointerDown={e=>start(e,t.id,'text',t)} onPointerMove={move} onPointerUp={()=>end(t.id)} onPointerCancel={()=>end(t.id)} style={{cursor:canEdit?'grab':'default'}}>
+        <text x={t.x*boardWidth} y={t.y*boardHeight} fontSize={t.size} fill={t.color}>
+          {t.text.split('\n').map((line,i)=><tspan key={i} x={t.x*boardWidth} dy={i===0 ? 0 : t.size*1.2}>{line}</tspan>)}
+        </text>
+      </g>)}
     </g>
     {progress&&<g><circle cx={progress.x} cy={progress.y} r="14" fill="rgba(0,0,0,.65)"/><circle cx={progress.x} cy={progress.y} r="11" fill="none" stroke="white" strokeWidth="3" strokeDasharray={`${2*Math.PI*11}`} strokeDashoffset={`${2*Math.PI*11*(1-progress.value)}`} transform={`rotate(-90 ${progress.x} ${progress.y})`}/></g>}
   </svg>;
