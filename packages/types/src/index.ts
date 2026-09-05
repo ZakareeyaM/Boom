@@ -10,6 +10,7 @@ export interface DrawLinePayload { prevX:number; prevY:number; currX:number; cur
 export interface WhiteboardState { isOpen:boolean; activePresenterId?:string; activePresenterName?:string; }
 export interface EraseRectPayload { x1:number; y1:number; x2:number; y2:number; }
 export interface WhiteboardAsset { id:string; kind:'image'|'pdf'; name:string; dataUrl:string; }
+export interface WhiteboardSnapshot { history:DrawLinePayload[][]; asset:WhiteboardAsset|null; texts:WhiteboardText[]; shapes:WhiteboardShape[]; }
 export interface WhiteboardCursor { participantId:string; displayName:string; x:number; y:number; visible:boolean; }
 export interface WhiteboardText { id:string; text:string; x:number; y:number; color:string; size:number; rotation?:number; }
 export type WhiteboardShapeType = 'rectangle'|'rounded-rectangle'|'ellipse'|'line'|'arrow'|'triangle'|'diamond'|'pentagon'|'hexagon'|'octagon'|'star'|'heart'|'cloud'|'grid'|'graph';
@@ -23,7 +24,7 @@ export interface ScreenShareRequest { requesterSocketId:string; requesterName:st
 export interface WhiteboardEditRequest { requesterSocketId:string; requesterName:string; }
 
 export interface ServerToClientEvents {
-  'room:joined': (data:{meeting:Meeting;participant:Participant;participants:Participant[];messages:ChatMessage[];whiteboardState?:WhiteboardState;whiteboardHistory?:DrawLinePayload[][];whiteboardAsset?:WhiteboardAsset|null;whiteboardTexts?:WhiteboardText[];whiteboardShapes?:WhiteboardShape[]})=>void;
+  'room:joined': (data:{meeting:Meeting;participant:Participant;participants:Participant[];messages:ChatMessage[];whiteboardState?:WhiteboardState;whiteboardHistory?:DrawLinePayload[][];whiteboardAsset?:WhiteboardAsset|null;whiteboardTexts?:WhiteboardText[];whiteboardShapes?:WhiteboardShape[];canUndo?:boolean;canRedo?:boolean})=>void;
   'participant:joined':(p:Participant)=>void; 'participant:left':(d:{participantId:string;displayName:string})=>void; 'participant:updated':(p:Participant)=>void;
   'participant:muted':(d:{participantId:string;mutedByHost:boolean;media?:'audio'|'video'})=>void; 'participant:removed':(d:{participantId:string;reason:string})=>void;
   'meeting:ended':(d:{reason:string})=>void; 'chat:message':(m:ChatMessage)=>void;
@@ -31,7 +32,7 @@ export interface ServerToClientEvents {
   'screenShare:permissionGranted':()=>void; 'screenShare:permissionDenied':(d:{reason:string})=>void; 'screenShare:permissionRevoked':(d:{reason:string})=>void; 'screenShare:forceStop':(d:{reason:string})=>void;
   'whiteboard:requested':(d:WhiteboardEditRequest)=>void; 'whiteboard:permissionGranted':()=>void; 'whiteboard:permissionDenied':(d:{reason:string})=>void; 'whiteboard:permissionRevoked':(d:{reason:string})=>void;
   'whiteboard:toggle':(s:WhiteboardState)=>void; 'whiteboard:draw':(d:{line:DrawLinePayload;senderId:string})=>void; 'whiteboard:strokeEnd':(d:{senderId:string})=>void;
-  'whiteboard:undo':(d:{history:DrawLinePayload[][];asset:WhiteboardAsset|null;texts:WhiteboardText[];shapes?:WhiteboardShape[]})=>void; 'whiteboard:redo':(d:{history:DrawLinePayload[][];asset:WhiteboardAsset|null;texts:WhiteboardText[];shapes?:WhiteboardShape[]})=>void; 'whiteboard:snapshot':(d:{history:DrawLinePayload[][];asset:WhiteboardAsset|null;texts:WhiteboardText[];shapes?:WhiteboardShape[]})=>void;
+  'whiteboard:undo':(d:{history:DrawLinePayload[][];asset:WhiteboardAsset|null;texts:WhiteboardText[];shapes?:WhiteboardShape[];canUndo?:boolean;canRedo?:boolean})=>void; 'whiteboard:redo':(d:{history:DrawLinePayload[][];asset:WhiteboardAsset|null;texts:WhiteboardText[];shapes?:WhiteboardShape[];canUndo?:boolean;canRedo?:boolean})=>void; 'whiteboard:snapshot':(d:{history:DrawLinePayload[][];asset:WhiteboardAsset|null;texts:WhiteboardText[];shapes?:WhiteboardShape[];canUndo?:boolean;canRedo?:boolean})=>void; 'whiteboard:historyState':(d:{canUndo:boolean;canRedo:boolean})=>void;
   'whiteboard:clear':()=>void; 'whiteboard:scroll':(d:{scrollTop:number})=>void; 'whiteboard:text':(d:{text:WhiteboardText})=>void; 'whiteboard:textUpdate':(d:{text:WhiteboardText})=>void; 'whiteboard:textDelete':(d:{textId:string})=>void; 'whiteboard:eraseRect':(d:{rect:EraseRectPayload})=>void;
   'whiteboard:cursor':(d:WhiteboardCursor)=>void; 'whiteboard:asset':(d:{asset:WhiteboardAsset|null})=>void; 'whiteboard:shape':(d:{shape:WhiteboardShape})=>void; 'whiteboard:shapeUpdate':(d:{shape:WhiteboardShape})=>void; 'whiteboard:shapeDelete':(d:{shapeId:string})=>void;
   'webrtc:offer':(p:WebRTCOfferPayload)=>void; 'webrtc:answer':(p:WebRTCAnswerPayload)=>void; 'webrtc:ice-candidate':(p:WebRTCIceCandidatePayload)=>void;

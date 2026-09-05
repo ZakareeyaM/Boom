@@ -14,7 +14,7 @@ import type {
   WebRTCOfferPayload,
   WebRTCAnswerPayload,
   WebRTCIceCandidatePayload,
-  WhiteboardShape, WhiteboardText, WhiteboardAsset,
+  WhiteboardShape, WhiteboardText, WhiteboardAsset, WhiteboardSnapshot,
 } from '@boom/types';
 
 interface ActiveRoom {
@@ -28,6 +28,9 @@ interface ActiveRoom {
   whiteboardState: WhiteboardState;
   whiteboardHistory: DrawLinePayload[][];
   whiteboardRedo: DrawLinePayload[][];
+  whiteboardUndoStack: WhiteboardSnapshot[];
+  whiteboardRedoStack: WhiteboardSnapshot[];
+  whiteboardObjectEditTimers: Map<string, ReturnType<typeof setTimeout>>;
   whiteboardCurrentStroke: Map<string, DrawLinePayload[]>;
   whiteboardAsset: import('@boom/types').WhiteboardAsset | null;
   whiteboardTexts: WhiteboardText[];
@@ -40,6 +43,59 @@ export class RoomManager {
   private db = getDatabase();
 
   constructor(private io: Server<ClientToServerEvents, ServerToClientEvents>) {}
+
+  private captureWhiteboardSnapshot(room: ActiveRoom): WhiteboardSnapshot {
+    return {
+      history: room.whiteboardHistory.map(stroke => stroke.map(seg => ({ ...seg }))),
+      asset: room.whiteboardAsset ? { ...room.whiteboardAsset } : null,
+      texts: room.whiteboardTexts.map(text => ({ ...text })),
+      shapes: room.whiteboardShapes.map(shape => ({ ...shape })),
+    };
+  }
+
+  private restoreWhiteboardSnapshot(room: ActiveRoom, snapshot: WhiteboardSnapshot) {
+    room.whiteboardHistory = snapshot.history.map(stroke => stroke.map(seg => ({ ...seg })));
+    room.whiteboardAsset = snapshot.asset ? { ...snapshot.asset } : null;
+    room.whiteboardTexts = snapshot.texts.map(text => ({ ...text }));
+    room.whiteboardShapes = snapshot.shapes.map(shape => ({ ...shape }));
+    room.whiteboardCurrentStroke.clear();
+  }
+
+  private clearObjectEditTimers(room: ActiveRoom) {
+    for (const timer of room.whiteboardObjectEditTimers.values()) clearTimeout(timer);
+    room.whiteboardObjectEditTimers.clear();
+  }
+
+  private recordWhiteboardAction(room: ActiveRoom) {
+    this.clearObjectEditTimers(room);
+    room.whiteboardUndoStack.push(this.captureWhiteboardSnapshot(room));
+    // Keep memory bounded because an uploaded asset may contain a large data URL.
+    if (room.whiteboardUndoStack.length > 30) room.whiteboardUndoStack.shift();
+    room.whiteboardRedoStack = [];
+    room.whiteboardRedo = [];
+  }
+
+  private emitWhiteboardSnapshot(meetingCode: string, room: ActiveRoom, event: 'whiteboard:undo'|'whiteboard:redo'|'whiteboard:snapshot' = 'whiteboard:snapshot') {
+    this.io.to(meetingCode).emit(event, {
+      history: room.whiteboardHistory,
+      asset: room.whiteboardAsset,
+      texts: room.whiteboardTexts,
+      shapes: room.whiteboardShapes,
+      canUndo: room.whiteboardUndoStack.length > 0,
+      canRedo: room.whiteboardRedoStack.length > 0,
+    });
+    this.io.to(meetingCode).emit('whiteboard:historyState', {
+      canUndo: room.whiteboardUndoStack.length > 0,
+      canRedo: room.whiteboardRedoStack.length > 0,
+    });
+  }
+
+  private recordObjectEdit(room: ActiveRoom, key: string) {
+    if (room.whiteboardObjectEditTimers.has(key)) return;
+    this.recordWhiteboardAction(room);
+    const timer = setTimeout(() => { room.whiteboardObjectEditTimers.delete(key); }, 650);
+    room.whiteboardObjectEditTimers.set(key, timer);
+  }
 
   public registerSocket(socket: Socket<ClientToServerEvents, ServerToClientEvents>) {
     console.log(`[Socket Connected] ID: ${socket.id}`);
@@ -76,6 +132,9 @@ export class RoomManager {
             whiteboardEditors: new Set(),
             whiteboardHistory: [],
             whiteboardRedo: [],
+            whiteboardUndoStack: [],
+            whiteboardRedoStack: [],
+            whiteboardObjectEditTimers: new Map(),
             whiteboardCurrentStroke: new Map(),
             whiteboardAsset: null,
             whiteboardTexts: [],
@@ -147,6 +206,8 @@ export class RoomManager {
           whiteboardAsset: room.whiteboardAsset,
           whiteboardTexts: room.whiteboardTexts,
           whiteboardShapes: room.whiteboardShapes,
+          canUndo: room.whiteboardUndoStack.length > 0,
+          canRedo: room.whiteboardRedoStack.length > 0,
         });
 
         // If screen share is active, notify the newly joined participant
@@ -496,7 +557,7 @@ export class RoomManager {
       if (!p || !p.isHost) return;
       room.whiteboardState = { isOpen, activePresenterId: isOpen ? socket.id : undefined, activePresenterName: isOpen ? p.displayName : undefined };
       this.io.to(meetingCode).emit('whiteboard:toggle', room.whiteboardState);
-      this.io.to(meetingCode).emit('whiteboard:snapshot', { history: room.whiteboardHistory, asset: room.whiteboardAsset, texts: room.whiteboardTexts, shapes: room.whiteboardShapes });
+      this.emitWhiteboardSnapshot(meetingCode, room);
     });
 
     socket.on('whiteboard:draw', ({ line }) => {
@@ -505,8 +566,12 @@ export class RoomManager {
       const p = room.participants.get(socket.id);
       const canEdit = !!p && (p.isHost || room.whiteboardEditors.has(socket.id));
       if (!canEdit) return;
-      const buf = room.whiteboardCurrentStroke.get(socket.id) || [];
-      buf.push(line); room.whiteboardCurrentStroke.set(socket.id, buf); room.whiteboardRedo = [];
+      let buf = room.whiteboardCurrentStroke.get(socket.id);
+      if (!buf) {
+        this.recordWhiteboardAction(room);
+        buf = [];
+      }
+      buf.push(line); room.whiteboardCurrentStroke.set(socket.id, buf);
       socket.to(meetingCode).emit('whiteboard:draw', { line, senderId: socket.id });
     });
 
@@ -520,65 +585,80 @@ export class RoomManager {
       if (stroke.length) room.whiteboardHistory.push(stroke);
       room.whiteboardCurrentStroke.delete(socket.id);
       socket.to(meetingCode).emit('whiteboard:strokeEnd', { senderId: socket.id });
+      this.io.to(meetingCode).emit('whiteboard:historyState', { canUndo: room.whiteboardUndoStack.length > 0, canRedo: room.whiteboardRedoStack.length > 0 });
     });
 
     socket.on('whiteboard:undo', () => {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return; const room = this.rooms.get(meetingCode); if (!room) return;
-      const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id)) || !room.whiteboardHistory.length) return;
-      const stroke = room.whiteboardHistory.pop(); if (stroke) room.whiteboardRedo.push(stroke);
-      this.io.to(meetingCode).emit('whiteboard:undo', { history: room.whiteboardHistory, asset: room.whiteboardAsset, texts: room.whiteboardTexts, shapes: room.whiteboardShapes });
+      const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id)) || !room.whiteboardUndoStack.length) return;
+      room.whiteboardRedoStack.push(this.captureWhiteboardSnapshot(room));
+      const previous = room.whiteboardUndoStack.pop(); if (!previous) return;
+      this.restoreWhiteboardSnapshot(room, previous);
+      this.emitWhiteboardSnapshot(meetingCode, room, 'whiteboard:undo');
     });
 
     socket.on('whiteboard:redo', () => {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return; const room = this.rooms.get(meetingCode); if (!room) return;
-      const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id)) || !room.whiteboardRedo.length) return;
-      const stroke = room.whiteboardRedo.pop(); if (stroke) room.whiteboardHistory.push(stroke);
-      this.io.to(meetingCode).emit('whiteboard:redo', { history: room.whiteboardHistory, asset: room.whiteboardAsset, texts: room.whiteboardTexts, shapes: room.whiteboardShapes });
+      const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id)) || !room.whiteboardRedoStack.length) return;
+      room.whiteboardUndoStack.push(this.captureWhiteboardSnapshot(room));
+      const next = room.whiteboardRedoStack.pop(); if (!next) return;
+      this.restoreWhiteboardSnapshot(room, next);
+      this.emitWhiteboardSnapshot(meetingCode, room, 'whiteboard:redo');
     });
 
     socket.on('whiteboard:clear', () => {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return; const room = this.rooms.get(meetingCode); if (!room) return;
       const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      this.recordWhiteboardAction(room);
       room.whiteboardHistory=[]; room.whiteboardRedo=[]; room.whiteboardCurrentStroke.clear(); room.whiteboardTexts=[]; room.whiteboardShapes=[]; room.whiteboardAsset=null;
-      this.io.to(meetingCode).emit('whiteboard:clear');
+      this.emitWhiteboardSnapshot(meetingCode, room);
     });
 
     socket.on('whiteboard:textUpdate', ({ text }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      this.recordObjectEdit(room, `text:${text.id}`);
       room.whiteboardTexts = room.whiteboardTexts.map(x=>x.id===text.id ? { ...x, ...text } : x);
       this.io.to(meetingCode).emit('whiteboard:textUpdate',{text});
+      this.io.to(meetingCode).emit('whiteboard:historyState',{canUndo:room.whiteboardUndoStack.length>0,canRedo:room.whiteboardRedoStack.length>0});
     });
 
     socket.on('whiteboard:textDelete', ({ textId }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
       if(!room.whiteboardTexts.some(x=>x.id===textId)) return;
+      this.recordWhiteboardAction(room);
       room.whiteboardTexts = room.whiteboardTexts.filter(x=>x.id!==textId);
       this.io.to(meetingCode).emit('whiteboard:textDelete',{textId});
+      this.io.to(meetingCode).emit('whiteboard:historyState',{canUndo:room.whiteboardUndoStack.length>0,canRedo:room.whiteboardRedoStack.length>0});
     });
 
     socket.on('whiteboard:shape', ({ shape }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
       const safe: WhiteboardShape = { ...shape, id: shape.id || `shape-${crypto.randomUUID()}`, rotation: Number(shape.rotation || 0) };
+      this.recordWhiteboardAction(room);
       room.whiteboardShapes = [...room.whiteboardShapes.filter(x=>x.id!==safe.id), safe];
-      room.whiteboardRedo=[];
       this.io.to(meetingCode).emit('whiteboard:shape',{shape:safe});
     });
 
     socket.on('whiteboard:shapeUpdate', ({ shape }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      this.recordObjectEdit(room, `shape:${shape.id}`);
       room.whiteboardShapes = room.whiteboardShapes.map(x=>x.id===shape.id ? { ...x, ...shape } : x);
       this.io.to(meetingCode).emit('whiteboard:shapeUpdate',{shape});
+      this.io.to(meetingCode).emit('whiteboard:historyState',{canUndo:room.whiteboardUndoStack.length>0,canRedo:room.whiteboardRedoStack.length>0});
     });
 
     socket.on('whiteboard:shapeDelete', ({ shapeId }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!room.whiteboardShapes.some(x=>x.id===shapeId)) return;
+      this.recordWhiteboardAction(room);
       room.whiteboardShapes = room.whiteboardShapes.filter(x=>x.id!==shapeId);
       this.io.to(meetingCode).emit('whiteboard:shapeDelete',{shapeId});
+      this.io.to(meetingCode).emit('whiteboard:historyState',{canUndo:room.whiteboardUndoStack.length>0,canRedo:room.whiteboardRedoStack.length>0});
     });
 
     socket.on('whiteboard:scroll', ({ scrollTop }) => {
@@ -591,10 +671,10 @@ export class RoomManager {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
       const inRect=(x:number,y:number)=>x>=Math.min(rect.x1,rect.x2)&&x<=Math.max(rect.x1,rect.x2)&&y>=Math.min(rect.y1,rect.y2)&&y<=Math.max(rect.y1,rect.y2);
+      this.recordWhiteboardAction(room);
       room.whiteboardHistory=room.whiteboardHistory.map(stroke=>stroke.filter(seg=>!inRect((seg.prevX+seg.currX)/2,(seg.prevY+seg.currY)/2))).filter(Boolean);
       room.whiteboardTexts = room.whiteboardTexts.filter(text => !inRect(text.x, text.y));
-      room.whiteboardRedo=[];
-      this.io.to(meetingCode).emit('whiteboard:snapshot',{history:room.whiteboardHistory,asset:room.whiteboardAsset,texts:room.whiteboardTexts,shapes:room.whiteboardShapes});
+      this.emitWhiteboardSnapshot(meetingCode, room);
     });
 
     socket.on('whiteboard:cursor', ({ x, y, visible }) => {
@@ -605,13 +685,18 @@ export class RoomManager {
     socket.on('whiteboard:text', ({ text }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
-      room.whiteboardTexts.push(text); this.io.to(meetingCode).emit('whiteboard:text',{text});
+      this.recordWhiteboardAction(room);
+      room.whiteboardTexts = [...room.whiteboardTexts.filter(x=>x.id!==text.id), text];
+      this.io.to(meetingCode).emit('whiteboard:text',{text});
+      this.io.to(meetingCode).emit('whiteboard:historyState',{canUndo:room.whiteboardUndoStack.length>0,canRedo:room.whiteboardRedoStack.length>0});
     });
 
     socket.on('whiteboard:asset', ({ asset }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
       if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      this.recordWhiteboardAction(room);
       room.whiteboardAsset=asset; this.io.to(meetingCode).emit('whiteboard:asset',{asset});
+      this.io.to(meetingCode).emit('whiteboard:historyState',{canUndo:room.whiteboardUndoStack.length>0,canRedo:room.whiteboardRedoStack.length>0});
     });
 
     // Chat Message
@@ -717,6 +802,8 @@ export class RoomManager {
 
         // If all participants left, clear memory
         if (room.participants.size === 0) {
+          for (const timer of room.whiteboardObjectEditTimers.values()) clearTimeout(timer);
+          room.whiteboardObjectEditTimers.clear();
           this.rooms.delete(meetingCode);
         }
       }

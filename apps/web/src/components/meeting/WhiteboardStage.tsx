@@ -67,6 +67,8 @@ interface WhiteboardStageProps {
   onCursor?: (cursor: Omit<WhiteboardCursor,'participantId'|'displayName'>) => void;
   onAsset?: (asset: WhiteboardAsset | null) => void;
   onText?: (text: WhiteboardText) => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   onClose: () => void;
 }
 
@@ -117,6 +119,8 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   onCursor,
   onAsset,
   onText,
+  canUndo = false,
+  canRedo = false,
   onTextUpdate,
   onTextDelete,
   whiteboardShapes = [],
@@ -294,30 +298,36 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   );
 
   const handleUndo = useCallback(() => {
-    if (!canEdit || allStrokesRef.current.length === 0) return;
-    const stroke = allStrokesRef.current.pop();
-    if (stroke) redoStrokesRef.current.push(stroke);
-    redrawAll();
+    if (!canEdit || !canUndo) return;
+    // The server owns the complete whiteboard history. It sends the restored
+    // snapshot back to every participant, including the person who clicked.
     onUndo();
-  }, [canEdit, redrawAll, onUndo]);
+  }, [canEdit, canUndo, onUndo]);
 
   const handleRedo = useCallback(() => {
-    if (!canEdit || redoStrokesRef.current.length === 0) return;
-    const stroke = redoStrokesRef.current.pop();
-    if (!stroke) return;
-    allStrokesRef.current.push(stroke);
-    redrawAll();
+    if (!canEdit || !canRedo) return;
     onRedo();
-  }, [canEdit, redrawAll, onRedo]);
+  }, [canEdit, canRedo, onRedo]);
 
   // Bridge functions so MeetingRoomPage (which owns the socket connection)
   // can feed remote events into this component without prop-drilling through
   // the parent on every keystroke of the socket hook.
+  // Only replace the local stroke history when the server actually sends a
+  // new history. Theme changes, asset changes and object updates must NOT
+  // reset the strokes the user has already drawn locally.
   useEffect(() => {
     allStrokesRef.current = whiteboardHistory.map(stroke => [...stroke]);
     redoStrokesRef.current = [];
     redrawAll();
-  }, [whiteboardHistory, whiteboardAsset, whiteboardTexts, redrawAll]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whiteboardHistory]);
+
+  // Repaint when the board appearance changes without replacing the stored
+  // drawing history. This fixes the light/dark toggle clearing the board.
+  useEffect(() => {
+    redrawAll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardBackground, whiteboardAsset]);
 
   useEffect(() => {
     (window as any).__boom_drawSegment = (
@@ -760,20 +770,10 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
           const rect: EraseRectPayload = { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
           if (dx > 0.002 || dy > 0.002) {
             applyEraseRect(rect);
-            // Delete text objects whose insertion point is inside the selected
-            // rectangle as well as the drawn strokes. The server mirrors this
-            // operation for everyone else in the meeting.
-            if (onTextDelete) {
-              const x1 = Math.min(rect.x1, rect.x2);
-              const x2 = Math.max(rect.x1, rect.x2);
-              const y1 = Math.min(rect.y1, rect.y2);
-              const y2 = Math.max(rect.y1, rect.y2);
-              for (const text of whiteboardTexts) {
-                if (text.x >= x1 && text.x <= x2 && text.y >= y1 && text.y <= y2) {
-                  onTextDelete(text.id);
-                }
-              }
-            }
+            // The server treats a rectangle erase as ONE history action and
+            // removes both strokes and text in that same action. Do not emit a
+            // separate textDelete for every matching text, otherwise one erase
+            // would create many undo steps.
             onEraseRect(rect);
           }
         } else if (dx > 0.003 || dy > 0.003) {
@@ -825,18 +825,435 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     remoteBuffersRef.current.clear();
     currentLocalStrokeRef.current = [];
     paintBackground();
-    onAsset?.(null);
     onClear();
   };
 
-  const handleDownload = () => {
+  const triggerDownload = (href: string, filename: string) => {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const loadPdfLib = async () => {
+    const existing = (window as any).PDFLib;
+    if (existing) return existing;
+
+    await new Promise<void>((resolve, reject) => {
+      const current = document.querySelector('script[data-boom-pdf-lib="true"]') as HTMLScriptElement | null;
+      if (current) {
+        if ((window as any).PDFLib) resolve();
+        else {
+          current.addEventListener('load', () => resolve(), { once: true });
+          current.addEventListener('error', () => reject(new Error('Could not load the PDF export library.')), { once: true });
+        }
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+      script.async = true;
+      script.dataset.boomPdfLib = 'true';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Could not load the PDF export library.'));
+      document.head.appendChild(script);
+    });
+
+    if (!(window as any).PDFLib) {
+      throw new Error('PDF export library is unavailable.');
+    }
+    return (window as any).PDFLib;
+  };
+
+  const hexToRgb = (hex: string) => {
+    const value = hex.replace('#', '').trim();
+    const normalized = value.length === 3
+      ? value.split('').map(c => c + c).join('')
+      : value.padEnd(6, '0').slice(0, 6);
+    return {
+      r: parseInt(normalized.slice(0, 2), 16) / 255,
+      g: parseInt(normalized.slice(2, 4), 16) / 255,
+      b: parseInt(normalized.slice(4, 6), 16) / 255,
+    };
+  };
+
+  const drawExportShapeOnCanvas = (
+    ctx: CanvasRenderingContext2D,
+    shape: WhiteboardShape,
+    scale: number,
+  ) => {
+    const boardWidth = containerRef.current?.clientWidth || 1;
+    const boardHeight = BOARD_HEIGHT;
+    const x = shape.x * boardWidth * scale;
+    const y = shape.y * boardHeight * scale;
+    const w = shape.width * boardWidth * scale;
+    const h = shape.height * boardHeight * scale;
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((shape.rotation || 0) * Math.PI / 180);
+    ctx.translate(-cx, -cy);
+    ctx.strokeStyle = shape.color;
+    ctx.lineWidth = Math.max(1, shape.size * scale);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+
+    const regularPoints = (count: number) => Array.from({ length: count }, (_, i) => {
+      const angle = -Math.PI / 2 + i * Math.PI * 2 / count;
+      return [cx + Math.cos(angle) * w / 2, cy + Math.sin(angle) * h / 2] as const;
+    });
+
+    switch (shape.type) {
+      case 'ellipse':
+        ctx.ellipse(cx, cy, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, Math.PI * 2);
+        break;
+      case 'line':
+        ctx.moveTo(x, y + h / 2);
+        ctx.lineTo(x + w, y + h / 2);
+        break;
+      case 'arrow':
+        ctx.moveTo(x, y + h / 2);
+        ctx.lineTo(x + w, y + h / 2);
+        ctx.moveTo(x + w - 14 * scale, y + h / 2 - 8 * scale);
+        ctx.lineTo(x + w, y + h / 2);
+        ctx.lineTo(x + w - 14 * scale, y + h / 2 + 8 * scale);
+        break;
+      case 'rounded-rectangle':
+        ctx.roundRect(x, y, w, h, Math.min(Math.abs(w), Math.abs(h)) * .16);
+        break;
+      case 'rectangle':
+        ctx.rect(x, y, w, h);
+        break;
+      case 'triangle':
+        ctx.moveTo(cx, y);
+        ctx.lineTo(x + w, y + h);
+        ctx.lineTo(x, y + h);
+        ctx.closePath();
+        break;
+      case 'diamond':
+        ctx.moveTo(cx, y);
+        ctx.lineTo(x + w, cy);
+        ctx.lineTo(cx, y + h);
+        ctx.lineTo(x, cy);
+        ctx.closePath();
+        break;
+      case 'pentagon':
+      case 'hexagon':
+      case 'octagon': {
+        const points = regularPoints(shape.type === 'pentagon' ? 5 : shape.type === 'hexagon' ? 6 : 8);
+        ctx.moveTo(points[0][0], points[0][1]);
+        points.slice(1).forEach(([px, py]) => ctx.lineTo(px, py));
+        ctx.closePath();
+        break;
+      }
+      case 'star': {
+        ctx.moveTo(cx, y);
+        for (let i = 1; i < 10; i++) {
+          const angle = -Math.PI / 2 + i * Math.PI / 5;
+          const rx = i % 2 ? w * .225 : w * .5;
+          const ry = i % 2 ? h * .225 : h * .5;
+          ctx.lineTo(cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry);
+        }
+        ctx.closePath();
+        break;
+      }
+      case 'heart':
+        ctx.moveTo(cx, y + h * .9);
+        ctx.bezierCurveTo(x, y + h * .55, x + w * .12, y, cx, y + h * .3);
+        ctx.bezierCurveTo(x + w * .88, y, x + w, y + h * .55, cx, y + h * .9);
+        ctx.closePath();
+        break;
+      case 'cloud':
+        ctx.moveTo(x + w * .2, y + h * .75);
+        ctx.bezierCurveTo(x, y + h * .65, x + w * .05, y + h * .35, x + w * .28, y + h * .4);
+        ctx.bezierCurveTo(x + w * .35, y + h * .05, x + w * .68, y + h * .05, x + w * .72, y + h * .4);
+        ctx.bezierCurveTo(x + w, y + h * .32, x + w, y + h * .75, x + w * .78, y + h * .78);
+        ctx.closePath();
+        break;
+      case 'grid': {
+        const rows = shape.rows || 4;
+        const cols = shape.cols || 4;
+        ctx.rect(x, y, w, h);
+        for (let r = 1; r < rows; r++) {
+          ctx.moveTo(x, y + h * r / rows);
+          ctx.lineTo(x + w, y + h * r / rows);
+        }
+        for (let c = 1; c < cols; c++) {
+          ctx.moveTo(x + w * c / cols, y);
+          ctx.lineTo(x + w * c / cols, y + h);
+        }
+        break;
+      }
+      case 'graph': {
+        const xMin = shape.xMin ?? -(shape.xValues || 5);
+        const xMax = shape.xMax ?? (shape.xValues || 5);
+        const yMin = shape.yMin ?? -(shape.yValues || 5);
+        const yMax = shape.yMax ?? (shape.yValues || 5);
+        const xi = shape.xInterval || 1;
+        const yi = shape.yInterval || 1;
+        const xSpan = Math.max(1, xMax - xMin);
+        const ySpan = Math.max(1, yMax - yMin);
+        for (let v = Math.ceil(xMin / xi) * xi; v <= xMax + xi * .001; v += xi) {
+          if (Math.abs(v) < xi * .0001) continue;
+          const px = x + ((v - xMin) / xSpan) * w;
+          ctx.moveTo(px, y);
+          ctx.lineTo(px, y + h);
+        }
+        for (let v = Math.ceil(yMin / yi) * yi; v <= yMax + yi * .001; v += yi) {
+          if (Math.abs(v) < yi * .0001) continue;
+          const py = y + h - ((v - yMin) / ySpan) * h;
+          ctx.moveTo(x, py);
+          ctx.lineTo(x + w, py);
+        }
+        const ox = xMin <= 0 && xMax >= 0 ? x + ((0 - xMin) / xSpan) * w : null;
+        const oy = yMin <= 0 && yMax >= 0 ? y + h - ((0 - yMin) / ySpan) * h : null;
+        if (oy !== null) { ctx.moveTo(x, oy); ctx.lineTo(x + w, oy); }
+        if (ox !== null) { ctx.moveTo(ox, y); ctx.lineTo(ox, y + h); }
+        break;
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  const drawExportObjectsOnCanvas = (
+    ctx: CanvasRenderingContext2D,
+    outputWidth: number,
+    outputHeight: number,
+  ) => {
+    const boardWidth = containerRef.current?.clientWidth || 1;
+    const scale = outputWidth / boardWidth;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, outputWidth, outputHeight);
+    ctx.clip();
+
+    // Strokes are replayed in exactly the same order as the live whiteboard.
+    for (const stroke of allStrokesRef.current) {
+      for (const seg of stroke) {
+        const x1 = seg.prevX * outputWidth;
+        const y1 = seg.prevY * BOARD_HEIGHT * scale;
+        const x2 = seg.currX * outputWidth;
+        const y2 = seg.currY * BOARD_HEIGHT * scale;
+        ctx.save();
+        ctx.beginPath();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(1, seg.size * scale);
+        if (seg.isEraser) {
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.strokeStyle = 'rgba(0,0,0,1)';
+        } else {
+          ctx.strokeStyle = seg.color;
+        }
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    for (const shape of whiteboardShapes) {
+      drawExportShapeOnCanvas(ctx, shape, scale);
+    }
+
+    for (const text of whiteboardTexts) {
+      const x = text.x * outputWidth;
+      const y = text.y * BOARD_HEIGHT * scale;
+      const fontSize = Math.max(1, text.size * scale);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((text.rotation || 0) * Math.PI / 180);
+      ctx.fillStyle = text.color;
+      ctx.font = `${fontSize}px Inter, Arial, sans-serif`;
+      ctx.textBaseline = 'alphabetic';
+      text.text.split('\n').forEach((line, index) => {
+        ctx.fillText(line, 0, index * fontSize * 1.2);
+      });
+      ctx.restore();
+    }
+
+    ctx.restore();
+  };
+
+  const exportImageWithAnnotations = async () => {
+    if (!whiteboardAsset?.dataUrl) return false;
+
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = whiteboardAsset.dataUrl;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Could not load the uploaded image for export.'));
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not create the image export canvas.');
+
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    drawExportObjectsOnCanvas(ctx, canvas.width, canvas.height);
+
+    const mime = whiteboardAsset.name.toLowerCase().endsWith('.jpg') || whiteboardAsset.name.toLowerCase().endsWith('.jpeg')
+      ? 'image/jpeg'
+      : 'image/png';
+    const extension = mime === 'image/jpeg' ? 'jpg' : 'png';
+    triggerDownload(canvas.toDataURL(mime, .95), `boom-annotated-${whiteboardAsset.name.replace(/\.[^.]+$/, '')}.${extension}`);
+    return true;
+  };
+
+  const exportPdfWithAnnotations = async () => {
+    if (!whiteboardAsset?.dataUrl) return false;
+
+    const PDFLib = await loadPdfLib();
+    const bytes = await fetch(whiteboardAsset.dataUrl).then(r => r.arrayBuffer());
+    const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+    const pages = pdfDoc.getPages();
+    if (!pages.length) throw new Error('The uploaded PDF has no pages.');
+
+    // The whiteboard displays the PDF from the top of the board. Export the
+    // annotations onto the first PDF page while preserving all original pages.
+    const page = pages[0];
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+    const boardWidth = containerRef.current?.clientWidth || 1;
+    const displayedPageHeight = pageHeight * boardWidth / pageWidth;
+    const sx = pageWidth / boardWidth;
+    const sy = pageHeight / displayedPageHeight;
+    const rgb = PDFLib.rgb;
+
+    const pdfColor = (hex: string) => {
+      const c = hexToRgb(hex);
+      return rgb(c.r, c.g, c.b);
+    };
+
+    const pdfY = (boardY: number) => pageHeight - boardY * sy;
+
+    for (const stroke of allStrokesRef.current) {
+      for (const seg of stroke) {
+        const x1 = seg.prevX * boardWidth * sx;
+        const y1 = pdfY(seg.prevY * BOARD_HEIGHT);
+        const x2 = seg.currX * boardWidth * sx;
+        const y2 = pdfY(seg.currY * BOARD_HEIGHT);
+        page.drawLine({
+          start: { x: x1, y: y1 },
+          end: { x: x2, y: y2 },
+          thickness: Math.max(.5, seg.size * sx),
+          color: seg.isEraser ? rgb(1, 1, 1) : pdfColor(seg.color),
+          opacity: seg.isEraser ? .95 : 1,
+        });
+      }
+    }
+
+    for (const shape of whiteboardShapes) {
+      const x = shape.x * boardWidth * sx;
+      const yTop = shape.y * BOARD_HEIGHT;
+      const w = shape.width * boardWidth * sx;
+      const h = shape.height * BOARD_HEIGHT * sy;
+      const y = pageHeight - yTop * sy - h;
+      const color = pdfColor(shape.color);
+      const thickness = Math.max(.5, shape.size * sx);
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const rotation = (shape.rotation || 0) * Math.PI / 180;
+      const point = (px: number, py: number) => {
+        const dx = px - cx;
+        const dy = py - cy;
+        return {
+          x: cx + dx * Math.cos(rotation) - dy * Math.sin(rotation),
+          y: cy + dx * Math.sin(rotation) + dy * Math.cos(rotation),
+        };
+      };
+      const line = (a: {x:number;y:number}, b: {x:number;y:number}) => page.drawLine({ start: a, end: b, thickness, color });
+
+      if (shape.type === 'ellipse') {
+        page.drawEllipse({ x: cx, y: cy, xScale: Math.abs(w) / 2, yScale: Math.abs(h) / 2, borderColor: color, borderWidth: thickness, rotate: PDFLib.degrees(shape.rotation || 0) });
+      } else if (shape.type === 'rectangle' || shape.type === 'rounded-rectangle' || shape.type === 'grid') {
+        page.drawRectangle({ x, y, width: w, height: h, borderColor: color, borderWidth: thickness, rotate: PDFLib.degrees(shape.rotation || 0), borderRadius: shape.type === 'rounded-rectangle' ? Math.min(Math.abs(w), Math.abs(h)) * .16 : undefined });
+        if (shape.type === 'grid') {
+          const rows = shape.rows || 4, cols = shape.cols || 4;
+          for (let r = 1; r < rows; r++) line(point(x, y + h * r / rows), point(x + w, y + h * r / rows));
+          for (let c = 1; c < cols; c++) line(point(x + w * c / cols, y), point(x + w * c / cols, y + h));
+        }
+      } else if (shape.type === 'line' || shape.type === 'arrow') {
+        line(point(x, y + h / 2), point(x + w, y + h / 2));
+        if (shape.type === 'arrow') {
+          line(point(x + w - 14 * sx, y + h / 2 - 8 * sy), point(x + w, y + h / 2));
+          line(point(x + w, y + h / 2), point(x + w - 14 * sx, y + h / 2 + 8 * sy));
+        }
+      } else {
+        const count = shape.type === 'triangle' ? 3 : shape.type === 'diamond' ? 4 : shape.type === 'pentagon' ? 5 : shape.type === 'hexagon' ? 6 : shape.type === 'octagon' ? 8 : 0;
+        if (count) {
+          const pts = Array.from({ length: count }, (_, i) => {
+            if (shape.type === 'triangle') return point(cx + (i === 0 ? 0 : i === 1 ? w / 2 : -w / 2), cy + (i === 0 ? h / 2 : -h / 2));
+            const a = -Math.PI / 2 + i * Math.PI * 2 / count;
+            return point(cx + Math.cos(a) * w / 2, cy + Math.sin(a) * h / 2);
+          });
+          for (let i = 0; i < pts.length; i++) line(pts[i], pts[(i + 1) % pts.length]);
+        } else if (shape.type === 'star') {
+          const pts = Array.from({ length: 10 }, (_, i) => {
+            const a = -Math.PI / 2 + i * Math.PI / 5;
+            const rx = i % 2 ? w * .225 : w * .5;
+            const ry = i % 2 ? h * .225 : h * .5;
+            return point(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry);
+          });
+          for (let i = 0; i < pts.length; i++) line(pts[i], pts[(i + 1) % pts.length]);
+        }
+      }
+    }
+
+    for (const text of whiteboardTexts) {
+      const fontSize = Math.max(4, text.size * sx);
+      const lines = text.text.split('\n');
+      const x = text.x * boardWidth * sx;
+      const y = pdfY(text.y * BOARD_HEIGHT);
+      for (let i = 0; i < lines.length; i++) {
+        page.drawText(lines[i], {
+          x,
+          y: y - i * fontSize * 1.2,
+          size: fontSize,
+          color: pdfColor(text.color),
+          rotate: PDFLib.degrees(text.rotation || 0),
+        });
+      }
+    }
+
+    const output = await pdfDoc.save();
+    const blob = new Blob([output], { type: 'application/pdf' });
+    const objectUrl = URL.createObjectURL(blob);
+    triggerDownload(objectUrl, `boom-annotated-${whiteboardAsset.name.replace(/\.pdf$/i, '')}.pdf`);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+    return true;
+  };
+
+  const handleDownload = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const url = canvas.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `boom-whiteboard-${Date.now()}.png`;
-    a.click();
+
+    try {
+      if (whiteboardAsset?.kind === 'image') {
+        await exportImageWithAnnotations();
+        return;
+      }
+
+      if (whiteboardAsset?.kind === 'pdf') {
+        await exportPdfWithAnnotations();
+        return;
+      }
+
+      triggerDownload(canvas.toDataURL('image/png'), `boom-whiteboard-${Date.now()}.png`);
+    } catch (error) {
+      console.error('Whiteboard export failed:', error);
+      alert('The annotated export could not be created. Please try again.');
+    }
   };
 
   return (
@@ -1055,7 +1472,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
           <div className="flex items-center bg-dark-surface rounded-xl p-0.5 border border-dark-border">
             <button
               onClick={handleUndo}
-              disabled={allStrokesRef.current.length === 0}
+              disabled={!canUndo}
               title="Undo"
               className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
@@ -1063,7 +1480,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             </button>
             <button
               onClick={handleRedo}
-              disabled={redoStrokesRef.current.length === 0}
+              disabled={!canRedo}
               title="Redo / bring back last undone action"
               className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-dark-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
@@ -1157,7 +1574,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
             onShapeUpdate={(shape)=>onShapeUpdate?.(shape)}
             onTextUpdate={(text)=>onTextUpdate?.(text)}
             onTextDelete={onTextDelete}
-            interactionEnabled={activeTool !== 'shape' && activeTool !== 'text' && activeTool !== 'eraser'}
+            interactionEnabled={activeTool === 'shape'}
           />
           {textInsertPos && canEdit && (
             <div

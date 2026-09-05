@@ -45,6 +45,7 @@ interface UseWebRTCProps {
   onWhiteboardTextUpdate?: (text: WhiteboardText) => void;
   onWhiteboardTextDelete?: (textId: string) => void;
   onWhiteboardShapeDelete?: (shapeId: string) => void;
+  onWhiteboardHistoryState?: (state: { canUndo: boolean; canRedo: boolean }) => void;
   onScreenShareForceStop?: (reason: string) => void;
 }
 
@@ -81,6 +82,7 @@ export function useWebRTC({
   onWhiteboardTextUpdate,
   onWhiteboardTextDelete,
   onWhiteboardShapeDelete,
+  onWhiteboardHistoryState,
   onScreenShareForceStop,
 }: UseWebRTCProps) {
   const [meetingState, setMeetingState] = useState<ClientMeetingState>('CONNECTING');
@@ -127,6 +129,7 @@ export function useWebRTC({
   const onWhiteboardTextUpdateRef = useRef(onWhiteboardTextUpdate);
   const onWhiteboardTextDeleteRef = useRef(onWhiteboardTextDelete);
   const onWhiteboardShapeDeleteRef = useRef(onWhiteboardShapeDelete);
+  const onWhiteboardHistoryStateRef = useRef(onWhiteboardHistoryState);
   const onScreenShareForceStopRef = useRef(onScreenShareForceStop);
 
   localStreamRef.current = localStream;
@@ -153,6 +156,7 @@ export function useWebRTC({
   onWhiteboardTextUpdateRef.current = onWhiteboardTextUpdate;
   onWhiteboardTextDeleteRef.current = onWhiteboardTextDelete;
   onWhiteboardShapeDeleteRef.current = onWhiteboardShapeDelete;
+  onWhiteboardHistoryStateRef.current = onWhiteboardHistoryState;
   onScreenShareForceStopRef.current = onScreenShareForceStop;
 
   // Wait for the local camera/mic stream to be ready before creating an
@@ -304,6 +308,7 @@ export function useWebRTC({
       setMessages(data.messages);
       if (data.whiteboardState) setWhiteboardState(data.whiteboardState);
       onWhiteboardSnapshotRef.current?.(data.whiteboardHistory || [], data.whiteboardAsset || null, (data as any).whiteboardTexts || [], (data as any).whiteboardShapes || []);
+      onWhiteboardHistoryStateRef.current?.({ canUndo: !!(data as any).canUndo, canRedo: !!(data as any).canRedo });
       setMeetingState('CONNECTED');
 
       // Ensure our own camera/mic are ready before negotiating, so the
@@ -438,9 +443,9 @@ export function useWebRTC({
       onWhiteboardStrokeEndRef.current?.(data.senderId);
     });
 
-    socket.on('whiteboard:undo', (data) => { onWhiteboardSnapshotRef.current?.(data.history, data.asset, data.texts || [], (data as any).shapes || []); });
+    socket.on('whiteboard:undo', (data) => { onWhiteboardSnapshotRef.current?.(data.history, data.asset, data.texts || [], (data as any).shapes || []); onWhiteboardHistoryStateRef.current?.({ canUndo: !!data.canUndo, canRedo: !!data.canRedo }); });
 
-    socket.on('whiteboard:redo', (data) => { onWhiteboardSnapshotRef.current?.(data.history, data.asset, data.texts || [], (data as any).shapes || []); });
+    socket.on('whiteboard:redo', (data) => { onWhiteboardSnapshotRef.current?.(data.history, data.asset, data.texts || [], (data as any).shapes || []); onWhiteboardHistoryStateRef.current?.({ canUndo: !!data.canUndo, canRedo: !!data.canRedo }); });
 
     socket.on('whiteboard:clear', () => {
       onWhiteboardClearRef.current?.();
@@ -460,6 +465,7 @@ export function useWebRTC({
     socket.on('whiteboard:shape', ({ shape }) => { onWhiteboardShapeRef.current?.(shape); });
     socket.on('whiteboard:shapeUpdate', ({ shape }) => { onWhiteboardShapeRef.current?.(shape); });
     socket.on('whiteboard:shapeDelete', ({ shapeId }) => { onWhiteboardShapeDeleteRef.current?.(shapeId); });
+    socket.on('whiteboard:historyState', (state) => { onWhiteboardHistoryStateRef.current?.(state); });
 
     // WebRTC Offer Received
     socket.on('webrtc:offer', async (payload) => {
