@@ -64,9 +64,6 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          channelCount: 1,
-          sampleRate: { ideal: 48000 },
-          sampleSize: { ideal: 16 },
         },
         video: videoDeviceId
           ? { deviceId: { exact: videoDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }

@@ -212,32 +212,48 @@ export function useWebRTC({
       }
     };
 
-    // Receive Remote Tracks — fix: listen for track mutations to force re-render
-    pc.ontrack = (event) => {
-      const stream = event.streams[0];
-      if (!stream) return;
+    // Receive Remote Tracks. Keep one stable MediaStream per peer and add every
+    // incoming track to it. Some browsers can deliver an RTCTrackEvent with an
+    // empty `streams` array; relying only on event.streams[0] can therefore lose
+    // the remote microphone even though the PeerConnection is connected.
+    const remoteMediaStream = new MediaStream();
 
-      const updateStream = () => {
+    pc.ontrack = (event) => {
+      const track = event.track;
+      if (!track) return;
+
+      // Avoid adding the same track twice if a browser re-fires the event.
+      if (!remoteMediaStream.getTracks().some((t) => t.id === track.id)) {
+        remoteMediaStream.addTrack(track);
+      }
+
+      setRemoteStreams((prev) => {
+        const next = new Map(prev);
+        next.set(remoteSocketId, remoteMediaStream);
+        return next;
+      });
+
+      track.onunmute = () => {
         setRemoteStreams((prev) => {
           const next = new Map(prev);
-          // Always replace with a fresh MediaStream wrapper so React sees the change
-          const fresh = new MediaStream(stream.getTracks());
-          next.set(remoteSocketId, fresh);
+          next.set(remoteSocketId, remoteMediaStream);
           return next;
         });
       };
 
-      updateStream();
+      track.onended = () => {
+        try {
+          if (remoteMediaStream.getTracks().some((t) => t.id === track.id)) {
+            remoteMediaStream.removeTrack(track);
+          }
+        } catch {}
 
-      // Re-trigger on track changes (e.g. replaceTrack for screen share)
-      event.track.onunmute = updateStream;
-      event.track.onended = () => {
         setRemoteStreams((prev) => {
           const next = new Map(prev);
-          // Re-clone stream without ended track so video el re-binds correctly
-          const remaining = stream.getTracks().filter((t) => t.readyState !== 'ended');
-          if (remaining.length > 0) {
-            next.set(remoteSocketId, new MediaStream(remaining));
+          if (remoteMediaStream.getTracks().length > 0) {
+            next.set(remoteSocketId, remoteMediaStream);
+          } else {
+            next.delete(remoteSocketId);
           }
           return next;
         });
@@ -575,27 +591,10 @@ export function useWebRTC({
         pc.addTrack(audioTrack, activeStream);
       }
 
-      // Keep microphone delivery on a stable Opus configuration. Mono voice
-      // audio avoids unnecessary stereo processing and a moderate bitrate is
-      // much more resilient on ordinary Wi-Fi/mobile connections.
-      const currentAudioSender =
-        pc.getSenders().find((sender) => sender.track?.kind === 'audio') || audioSender;
-      if (currentAudioSender) {
-        try {
-          const parameters = currentAudioSender.getParameters();
-          const encodings = parameters.encodings?.length ? parameters.encodings : [{}];
-          parameters.encodings = encodings.map((encoding: RTCRtpEncodingParameters) => ({
-            ...encoding,
-            maxBitrate: 64000,
-            dtx: true,
-          }));
-          currentAudioSender.setParameters(parameters).catch(() => {
-            // Some browsers do not expose these RTP sender parameters.
-          });
-        } catch {
-          // Keep the browser's default WebRTC audio configuration.
-        }
-      }
+      // Do not override the browser's Opus/RTP audio parameters here. Chrome
+      // already selects a robust voice configuration, and forcing optional
+      // encoding parameters can cause interoperability/audio-artifact issues
+      // on some browser/device combinations.
     });
 
     if (socketRef.current?.connected) {

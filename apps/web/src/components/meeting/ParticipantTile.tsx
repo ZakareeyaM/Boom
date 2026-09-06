@@ -20,13 +20,30 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   isScreenShare = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { isSpeaking } = useAudioMeter(stream, !participant.audioEnabled);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
+    if (videoRef.current) {
       videoRef.current.srcObject = stream;
+      videoRef.current.muted = true;
     }
-  }, [stream]);
+
+    // Keep remote voice audio on a dedicated <audio> element instead of
+    // routing it through the video element. This avoids browser-specific
+    // video/audio autoplay and track-mixing issues. The local tile stays
+    // silent to prevent echo.
+    if (audioRef.current) {
+      audioRef.current.srcObject = isLocal ? null : stream;
+      audioRef.current.muted = isLocal || !participant.audioEnabled;
+      if (!isLocal && stream) {
+        void audioRef.current.play().catch(() => {
+          // Browser autoplay policy may require a user gesture. The element
+          // remains attached and will play after the next allowed interaction.
+        });
+      }
+    }
+  }, [stream, isLocal, participant.audioEnabled]);
 
   const qualityColors = {
     EXCELLENT: 'text-emerald-400',
@@ -45,11 +62,24 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
         ref={videoRef}
         autoPlay
         playsInline
-        muted={isLocal} // Avoid local audio echo
+        muted={true} // Remote audio is played by the dedicated audio element below
         className={`w-full h-full object-cover transition-opacity duration-300 ${
           participant.videoEnabled && stream ? 'opacity-100' : 'opacity-0 absolute'
         } ${isLocal && !isScreenShare ? 'scale-x-[-1]' : ''}`} // Mirror local camera preview
       />
+
+      {/* Dedicated remote audio output. Keeping this separate from the video
+          element makes remote microphone playback reliable across browsers. */}
+      {!isLocal && (
+        <audio
+          ref={audioRef}
+          autoPlay
+          playsInline
+          controls={false}
+          className="hidden"
+          aria-hidden="true"
+        />
+      )}
 
       {/* Camera Off Avatar Fallback */}
       {(!participant.videoEnabled || !stream) && (
