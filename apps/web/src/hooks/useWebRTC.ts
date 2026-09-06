@@ -189,6 +189,10 @@ export function useWebRTC({
     const pc = new RTCPeerConnection(rtcConfiguration);
     peerConnections.current.set(remoteSocketId, pc);
 
+    // Keep microphone audio as a single voice track. Opus is the normal
+    // WebRTC voice codec; do not force custom RTP encoding parameters because
+    // browser defaults handle packet loss and clocking more reliably.
+
     // Add local tracks
     const currentStream =
       isSharingScreenRef.current && screenStreamRef.current
@@ -222,7 +226,22 @@ export function useWebRTC({
       const track = event.track;
       if (!track) return;
 
-      // Avoid adding the same track twice if a browser re-fires the event.
+      // A peer can renegotiate and deliver a replacement audio track before
+      // the previous track fires `ended`. Keeping both tracks in one MediaStream
+      // makes the <audio> element play both copies at once, which sounds like
+      // loud echo/looping, phasing and sometimes a high-pitched artifact.
+      // Keep exactly one live track per media kind.
+      const existingTrack = remoteMediaStream
+        .getTracks()
+        .find((t) => t.kind === track.kind && t.id !== track.id);
+
+      if (existingTrack) {
+        try {
+          existingTrack.stop();
+          remoteMediaStream.removeTrack(existingTrack);
+        } catch {}
+      }
+
       if (!remoteMediaStream.getTracks().some((t) => t.id === track.id)) {
         remoteMediaStream.addTrack(track);
       }

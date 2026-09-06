@@ -30,10 +30,21 @@ export function useScreenShare(onScreenShareEnded?: () => void, microphoneStream
       const displayAudio = display.getAudioTracks()[0];
       let output = display;
       if (micAudio || displayAudio) {
-        const ctx = new AudioContext();
+        const ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
         const dest = ctx.createMediaStreamDestination();
-        if (micAudio) ctx.createMediaStreamSource(new MediaStream([micAudio])).connect(dest);
-        if (displayAudio) ctx.createMediaStreamSource(new MediaStream([displayAudio])).connect(dest);
+
+        // Keep mixed screen-share audio below 0 dBFS so simultaneous microphone
+        // + tab/system audio cannot clip into harsh/high-pitched distortion.
+        const mix = ctx.createGain();
+        mix.gain.value = 0.75;
+        mix.connect(dest);
+
+        if (micAudio) {
+          ctx.createMediaStreamSource(new MediaStream([micAudio])).connect(mix);
+        }
+        if (displayAudio) {
+          ctx.createMediaStreamSource(new MediaStream([displayAudio])).connect(mix);
+        }
         output = new MediaStream([...display.getVideoTracks(), ...dest.stream.getAudioTracks()]);
         audioContextRef.current = ctx;
         mixedDestinationRef.current = dest;

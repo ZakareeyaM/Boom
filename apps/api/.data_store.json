@@ -6,42 +6,42 @@
       "email": "personal_f0927b32df6615f7fdc3d85d419b8f65@boom.local",
       "passwordHash": "personal_room_nologin",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-06T11:22:14.286Z",
-      "updatedAt": "2026-09-06T11:22:14.286Z"
+      "createdAt": "2026-09-06T11:47:43.912Z",
+      "updatedAt": "2026-09-06T11:47:43.912Z"
     }
   ],
   "meetings": [
     {
-      "id": "meet_849bbb90-0f6a-4320-b494-4385f3cfba5c",
-      "meetingCode": "NVM3-5J4F",
+      "id": "meet_0ed605b8-0cd1-46eb-b55d-3ca6c1784d68",
+      "meetingCode": "3W7X-KVG6",
       "hostId": "personal_f0927b32df6615f7fdc3d85d419b8f65",
       "title": "My Boom Room",
       "status": "ACTIVE",
-      "createdAt": "2026-09-06T11:22:14.289Z",
+      "createdAt": "2026-09-06T11:47:43.919Z",
       "isPersistent": true
     }
   ],
   "meetingHostAccessKeys": {
-    "meet_849bbb90-0f6a-4320-b494-4385f3cfba5c": "aacdc2b5-fba6-4cb8-b866-d29256ffffdec4c6babb-5d26-484d-94aa-84055bcafef1"
+    "meet_0ed605b8-0cd1-46eb-b55d-3ca6c1784d68": "aacdc2b5-fba6-4cb8-b866-d29256ffffdec4c6babb-5d26-484d-94aa-84055bcafef1"
   },
   "participants": [
     {
-      "id": "5mdO8K4Yprd15BlsAAAA",
-      "meetingId": "meet_849bbb90-0f6a-4320-b494-4385f3cfba5c",
-      "userId": null,
-      "displayName": "za",
-      "isHost": true,
-      "joinedAt": "2026-09-06T11:22:16.097Z",
-      "leftAt": "2026-09-06T11:22:37.068Z"
-    },
-    {
-      "id": "G7ksOEflMtLosZWYAAAB",
-      "meetingId": "meet_849bbb90-0f6a-4320-b494-4385f3cfba5c",
+      "id": "OKpT9kqO27LgqFAqAAAA",
+      "meetingId": "meet_0ed605b8-0cd1-46eb-b55d-3ca6c1784d68",
       "userId": null,
       "displayName": "zax",
+      "isHost": true,
+      "joinedAt": "2026-09-06T11:47:45.123Z",
+      "leftAt": "2026-09-06T11:48:21.099Z"
+    },
+    {
+      "id": "6MUPgUc8akqqEl2FAAAB",
+      "meetingId": "meet_0ed605b8-0cd1-46eb-b55d-3ca6c1784d68",
+      "userId": null,
+      "displayName": "zaxw",
       "isHost": false,
-      "joinedAt": "2026-09-06T11:22:23.359Z",
-      "leftAt": "2026-09-06T11:22:37.500Z"
+      "joinedAt": "2026-09-06T11:47:53.241Z",
+      "leftAt": "2026-09-06T11:48:21.139Z"
     }
   ],
   "messages": {}

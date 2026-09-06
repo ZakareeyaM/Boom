@@ -34,10 +34,17 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
     // video/audio autoplay and track-mixing issues. The local tile stays
     // silent to prevent echo.
     if (audioRef.current) {
-      audioRef.current.srcObject = isLocal ? null : stream;
-      audioRef.current.muted = isLocal || !participant.audioEnabled;
-      if (!isLocal && stream) {
-        void audioRef.current.play().catch(() => {
+      const audio = audioRef.current;
+      audio.srcObject = isLocal ? null : stream;
+      audio.muted = isLocal || !participant.audioEnabled;
+      // Never allow a stale playback rate/volume to survive a stream swap.
+      // A normal WebRTC voice stream must play at real time and at one copy.
+      audio.playbackRate = 1;
+      audio.defaultPlaybackRate = 1;
+      audio.volume = 1;
+
+      if (!isLocal && stream && participant.audioEnabled) {
+        void audio.play().catch(() => {
           // Browser autoplay policy may require a user gesture. The element
           // remains attached and will play after the next allowed interaction.
         });
@@ -76,6 +83,7 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
           autoPlay
           playsInline
           controls={false}
+          preload="auto" 
           className="hidden"
           aria-hidden="true"
         />
