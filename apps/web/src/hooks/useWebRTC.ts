@@ -312,6 +312,13 @@ export function useWebRTC({
       setLocalParticipant(data.participant);
       setParticipants(data.participants);
       setMessages(data.messages);
+
+      // Permission is tied to this live socket session. Never carry a previous
+      // grant across a reconnect/new socket: only the server can grant access.
+      setPendingScreenShareRequest(null);
+      setPendingWhiteboardRequest(null);
+      setScreenSharePermission(data.participant.isHost ? 'granted' : 'idle');
+      setWhiteboardPermission(data.participant.isHost ? 'granted' : 'idle');
       if (data.whiteboardState) setWhiteboardState(data.whiteboardState);
       onWhiteboardSnapshotRef.current?.(data.whiteboardHistory || [], data.whiteboardAsset || null, (data as any).whiteboardTexts || [], (data as any).whiteboardShapes || []);
       onWhiteboardHistoryStateRef.current?.({ canUndo: !!(data as any).canUndo, canRedo: !!(data as any).canRedo });

@@ -20,7 +20,6 @@ import type {
 interface ActiveRoom {
   meeting: Meeting;
   participants: Map<string, Participant>; // socketId -> Participant
-  hostUserId: string;
   hostSocketId?: string;
   screenSharerSocketId?: string;
   screenShareAllowedUsers: Set<string>;
@@ -126,7 +125,6 @@ export class RoomManager {
           room = {
             meeting,
             participants: new Map(),
-            hostUserId: meeting.hostId,
             whiteboardState: { isOpen: false },
             screenShareAllowedUsers: new Set(),
             whiteboardEditors: new Set(),
@@ -153,18 +151,18 @@ export class RoomManager {
 
         // Authenticate user if token provided in socket handshake
         const token = socket.handshake.auth?.token;
-        const hostAccessKey = typeof socket.handshake.auth?.hostAccessKey === 'string'
-          ? socket.handshake.auth.hostAccessKey
-          : '';
         let authUser = null;
         if (token) {
           authUser = await authService.verifyToken(token);
         }
 
-        const authenticatedHost = !!authUser && authUser.id === meeting.hostId;
-        const persistentRoomHost = !!hostAccessKey && await this.db.verifyMeetingHostAccessKey(meeting.id, hostAccessKey);
-        const isHost = authenticatedHost || persistentRoomHost || (room.participants.size === 0 && !room.hostSocketId);
-        if (isHost && !room.hostSocketId) {
+        // HOST RULE: the first participant to join the live room is the host.
+        // The invite link never grants host privileges, and authenticated users
+        // joining later must remain guests. This is deliberately based on the
+        // live room's first participant, not on credentials supplied by a
+        // shareable meeting link.
+        const isHost = room.participants.size === 0;
+        if (isHost) {
           room.hostSocketId = socket.id;
         }
 
@@ -193,7 +191,7 @@ export class RoomManager {
           meetingId: meeting.id,
           userId: participant.userId,
           displayName: participant.displayName,
-          isHost: participant.isHost,
+          isHost: participant.id === room.hostSocketId,
         });
 
         // Fetch recent messages
@@ -268,7 +266,7 @@ export class RoomManager {
       if (!room) return;
 
       const requester = room.participants.get(socket.id);
-      if (!requester || !requester.isHost) {
+      if (!requester || room.hostSocketId !== socket.id) {
         return socket.emit('error', {
           code: 'FORBIDDEN',
           message: 'Only the host can disable participant media.',
@@ -276,7 +274,7 @@ export class RoomManager {
       }
 
       const target = room.participants.get(targetParticipantId);
-      if (!target || target.isHost) return;
+      if (!target || target.id === room.hostSocketId) return;
 
       if (media === 'video') {
         target.videoEnabled = false;
@@ -301,7 +299,7 @@ export class RoomManager {
       if (!room) return;
 
       const requester = room.participants.get(socket.id);
-      if (!requester || !requester.isHost) {
+      if (!requester || room.hostSocketId !== socket.id) {
         return socket.emit('error', { code: 'FORBIDDEN', message: 'Only the host can remove participants.' });
       }
 
@@ -339,7 +337,7 @@ export class RoomManager {
       if (!room) return callback?.({ success: false, error: 'Room not found' });
 
       const requester = room.participants.get(socket.id);
-      if (!requester || !requester.isHost) {
+      if (!requester || room.hostSocketId !== socket.id) {
         return callback?.({ success: false, error: 'Only the host can end the meeting for everyone.' });
       }
 
@@ -396,11 +394,11 @@ export class RoomManager {
       if (!room) return;
 
       const responder = room.participants.get(socket.id);
-      const isHost = responder?.isHost || room.hostSocketId === socket.id;
+      const isHost = responder?.id === room.hostSocketId;
       if (!isHost) return;
 
       const requester = room.participants.get(requesterSocketId);
-      if (!requester || requester.isHost) return;
+      if (!requester || requester.id === room.hostSocketId) return;
 
       if (approved) {
         room.screenShareAllowedUsers.add(requesterSocketId);
@@ -424,7 +422,7 @@ export class RoomManager {
       const participant = room.participants.get(socket.id);
       if (!participant) return;
 
-      const isHost = participant.isHost || room.hostSocketId === socket.id;
+      const isHost = participant.id === room.hostSocketId;
       const hasScreenSharePermission = isHost || room.screenShareAllowedUsers.has(socket.id);
       if (!hasScreenSharePermission) {
         return socket.emit('screenShare:permissionDenied', {
@@ -475,11 +473,12 @@ export class RoomManager {
       if (!meetingCode) return;
       const room = this.rooms.get(meetingCode);
       const host = room?.participants.get(socket.id);
-      if (!room || !host?.isHost) return;
+      if (!room || !host || room.hostSocketId !== socket.id) return;
+      const target = room.participants.get(targetParticipantId);
+      if (!target || target.id === room.hostSocketId) return;
       room.screenShareAllowedUsers.delete(targetParticipantId);
       if (room.screenSharerSocketId === targetParticipantId) {
         room.screenSharerSocketId = undefined;
-        const target = room.participants.get(targetParticipantId);
         if (target) { target.screenShareActive = false; this.io.to(meetingCode).emit('participant:updated', target); }
         this.io.to(meetingCode).emit('screenShare:stopped', { participantId: targetParticipantId });
         this.io.to(targetParticipantId).emit('screenShare:forceStop', { reason: 'The host stopped your screen sharing.' });
@@ -498,7 +497,7 @@ export class RoomManager {
       const requester = room.participants.get(socket.id);
       if (!requester) return;
 
-      const isHost = requester.isHost || room.hostSocketId === socket.id;
+      const isHost = requester.id === room.hostSocketId;
       if (isHost) {
         socket.emit('whiteboard:permissionGranted');
         return;
@@ -526,7 +525,9 @@ export class RoomManager {
       if (!meetingCode) return;
       const room = this.rooms.get(meetingCode);
       const host = room?.participants.get(socket.id);
-      if (!room || !host?.isHost) return;
+      if (!room || !host || room.hostSocketId !== socket.id) return;
+      const target = room.participants.get(targetParticipantId);
+      if (!target || target.id === room.hostSocketId) return;
       room.whiteboardEditors.delete(targetParticipantId);
       this.io.to(targetParticipantId).emit('whiteboard:permissionRevoked', { reason: 'The host removed your whiteboard editing permission.' });
     });
@@ -540,11 +541,11 @@ export class RoomManager {
       if (!room) return;
 
       const responder = room.participants.get(socket.id);
-      const isHost = responder?.isHost || room.hostSocketId === socket.id;
+      const isHost = responder?.id === room.hostSocketId;
       if (!isHost) return;
 
       const requester = room.participants.get(requesterSocketId);
-      if (!requester || requester.isHost) return;
+      if (!requester || requester.id === room.hostSocketId) return;
 
       if (approved) {
         room.whiteboardEditors.add(requesterSocketId);
@@ -562,7 +563,7 @@ export class RoomManager {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return;
       const room = this.rooms.get(meetingCode); if (!room) return;
       const p = room.participants.get(socket.id);
-      if (!p || !p.isHost) return;
+      if (!p || room.hostSocketId !== socket.id) return;
       room.whiteboardState = { isOpen, activePresenterId: isOpen ? socket.id : undefined, activePresenterName: isOpen ? p.displayName : undefined };
       this.io.to(meetingCode).emit('whiteboard:toggle', room.whiteboardState);
       this.emitWhiteboardSnapshot(meetingCode, room);
@@ -572,7 +573,7 @@ export class RoomManager {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return;
       const room = this.rooms.get(meetingCode); if (!room) return;
       const p = room.participants.get(socket.id);
-      const canEdit = !!p && (p.isHost || room.whiteboardEditors.has(socket.id));
+      const canEdit = !!p && (socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id));
       if (!canEdit) return;
       let buf = room.whiteboardCurrentStroke.get(socket.id);
       if (!buf) {
@@ -587,7 +588,7 @@ export class RoomManager {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return;
       const room = this.rooms.get(meetingCode); if (!room) return;
       const p = room.participants.get(socket.id);
-      const canEdit = !!p && (p.isHost || room.whiteboardEditors.has(socket.id));
+      const canEdit = !!p && (socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id));
       if (!canEdit) return;
       const stroke = room.whiteboardCurrentStroke.get(socket.id) || [];
       if (stroke.length) room.whiteboardHistory.push(stroke);
@@ -598,7 +599,7 @@ export class RoomManager {
 
     socket.on('whiteboard:undo', () => {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return; const room = this.rooms.get(meetingCode); if (!room) return;
-      const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id)) || !room.whiteboardUndoStack.length) return;
+      const p = room.participants.get(socket.id); if (!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id)) || !room.whiteboardUndoStack.length) return;
       room.whiteboardRedoStack.push(this.captureWhiteboardSnapshot(room));
       const previous = room.whiteboardUndoStack.pop(); if (!previous) return;
       this.restoreWhiteboardSnapshot(room, previous);
@@ -607,7 +608,7 @@ export class RoomManager {
 
     socket.on('whiteboard:redo', () => {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return; const room = this.rooms.get(meetingCode); if (!room) return;
-      const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id)) || !room.whiteboardRedoStack.length) return;
+      const p = room.participants.get(socket.id); if (!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id)) || !room.whiteboardRedoStack.length) return;
       room.whiteboardUndoStack.push(this.captureWhiteboardSnapshot(room));
       const next = room.whiteboardRedoStack.pop(); if (!next) return;
       this.restoreWhiteboardSnapshot(room, next);
@@ -616,7 +617,7 @@ export class RoomManager {
 
     socket.on('whiteboard:clear', () => {
       const meetingCode = this.socketToRoom.get(socket.id); if (!meetingCode) return; const room = this.rooms.get(meetingCode); if (!room) return;
-      const p = room.participants.get(socket.id); if (!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      const p = room.participants.get(socket.id); if (!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       this.recordWhiteboardAction(room);
       room.whiteboardHistory=[]; room.whiteboardRedo=[]; room.whiteboardCurrentStroke.clear(); room.whiteboardTexts=[]; room.whiteboardShapes=[]; room.whiteboardAsset=null;
       this.emitWhiteboardSnapshot(meetingCode, room);
@@ -624,7 +625,7 @@ export class RoomManager {
 
     socket.on('whiteboard:textUpdate', ({ text }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       this.recordObjectEdit(room, `text:${text.id}`);
       room.whiteboardTexts = room.whiteboardTexts.map(x=>x.id===text.id ? { ...x, ...text } : x);
       this.io.to(meetingCode).emit('whiteboard:textUpdate',{text});
@@ -633,7 +634,7 @@ export class RoomManager {
 
     socket.on('whiteboard:textDelete', ({ textId }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       if(!room.whiteboardTexts.some(x=>x.id===textId)) return;
       this.recordWhiteboardAction(room);
       room.whiteboardTexts = room.whiteboardTexts.filter(x=>x.id!==textId);
@@ -643,7 +644,7 @@ export class RoomManager {
 
     socket.on('whiteboard:shape', ({ shape }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       const safe: WhiteboardShape = { ...shape, id: shape.id || `shape-${crypto.randomUUID()}`, rotation: Number(shape.rotation || 0) };
       this.recordWhiteboardAction(room);
       room.whiteboardShapes = [...room.whiteboardShapes.filter(x=>x.id!==safe.id), safe];
@@ -652,7 +653,7 @@ export class RoomManager {
 
     socket.on('whiteboard:shapeUpdate', ({ shape }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       this.recordObjectEdit(room, `shape:${shape.id}`);
       room.whiteboardShapes = room.whiteboardShapes.map(x=>x.id===shape.id ? { ...x, ...shape } : x);
       this.io.to(meetingCode).emit('whiteboard:shapeUpdate',{shape});
@@ -661,7 +662,7 @@ export class RoomManager {
 
     socket.on('whiteboard:shapeDelete', ({ shapeId }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       if(!room.whiteboardShapes.some(x=>x.id===shapeId)) return;
       this.recordWhiteboardAction(room);
       room.whiteboardShapes = room.whiteboardShapes.filter(x=>x.id!==shapeId);
@@ -671,13 +672,13 @@ export class RoomManager {
 
     socket.on('whiteboard:scroll', ({ scrollTop }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       socket.to(meetingCode).emit('whiteboard:scroll',{scrollTop});
     });
 
     socket.on('whiteboard:eraseRect', ({ rect }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       const inRect=(x:number,y:number)=>x>=Math.min(rect.x1,rect.x2)&&x<=Math.max(rect.x1,rect.x2)&&y>=Math.min(rect.y1,rect.y2)&&y<=Math.max(rect.y1,rect.y2);
       this.recordWhiteboardAction(room);
       room.whiteboardHistory=room.whiteboardHistory.map(stroke=>stroke.filter(seg=>!inRect((seg.prevX+seg.currX)/2,(seg.prevY+seg.currY)/2))).filter(Boolean);
@@ -692,7 +693,7 @@ export class RoomManager {
 
     socket.on('whiteboard:text', ({ text }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       this.recordWhiteboardAction(room);
       room.whiteboardTexts = [...room.whiteboardTexts.filter(x=>x.id!==text.id), text];
       this.io.to(meetingCode).emit('whiteboard:text',{text});
@@ -701,7 +702,7 @@ export class RoomManager {
 
     socket.on('whiteboard:asset', ({ asset }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(p.isHost || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
       this.recordWhiteboardAction(room);
       room.whiteboardAsset=asset; this.io.to(meetingCode).emit('whiteboard:asset',{asset});
       this.io.to(meetingCode).emit('whiteboard:historyState',{canUndo:room.whiteboardUndoStack.length>0,canRedo:room.whiteboardRedoStack.length>0});
@@ -726,7 +727,7 @@ export class RoomManager {
         meetingId: room.meeting.id,
         senderId: socket.id,
         senderName: participant.displayName,
-        isHost: participant.isHost,
+        isHost: participant.id === room.hostSocketId,
         message: trimmed,
         createdAt: new Date().toISOString(),
       };

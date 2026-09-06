@@ -6,60 +6,60 @@
       "email": "personal_f0927b32df6615f7fdc3d85d419b8f65@boom.local",
       "passwordHash": "personal_room_nologin",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-06T10:08:05.769Z",
-      "updatedAt": "2026-09-06T10:08:05.769Z"
+      "createdAt": "2026-09-06T10:55:12.893Z",
+      "updatedAt": "2026-09-06T10:55:12.893Z"
     }
   ],
   "meetings": [
     {
-      "id": "meet_d850e483-2970-4cb2-a017-2d4918576ee6",
-      "meetingCode": "6NHY-7JRP",
+      "id": "meet_20941289-e733-4321-bc63-7516ff224155",
+      "meetingCode": "54QA-Z5PE",
       "hostId": "personal_f0927b32df6615f7fdc3d85d419b8f65",
       "title": "My Boom Room",
       "status": "ACTIVE",
-      "createdAt": "2026-09-06T10:08:05.773Z",
+      "createdAt": "2026-09-06T10:55:12.897Z",
       "isPersistent": true
     }
   ],
   "meetingHostAccessKeys": {
-    "meet_d850e483-2970-4cb2-a017-2d4918576ee6": "aacdc2b5-fba6-4cb8-b866-d29256ffffdec4c6babb-5d26-484d-94aa-84055bcafef1"
+    "meet_20941289-e733-4321-bc63-7516ff224155": "aacdc2b5-fba6-4cb8-b866-d29256ffffdec4c6babb-5d26-484d-94aa-84055bcafef1"
   },
   "participants": [
     {
-      "id": "zbqCzi-4__Clu_stAAAC",
-      "meetingId": "meet_d850e483-2970-4cb2-a017-2d4918576ee6",
+      "id": "BLLRZa__Sh0CrutiAAAA",
+      "meetingId": "meet_20941289-e733-4321-bc63-7516ff224155",
       "userId": null,
-      "displayName": "Zak",
+      "displayName": "zak",
       "isHost": true,
-      "joinedAt": "2026-09-06T10:08:12.635Z",
-      "leftAt": "2026-09-06T10:08:29.807Z"
+      "joinedAt": "2026-09-06T10:55:18.696Z",
+      "leftAt": "2026-09-06T10:56:26.845Z"
     },
     {
-      "id": "2Zy_BXUfVLxtZchbAAAF",
-      "meetingId": "meet_d850e483-2970-4cb2-a017-2d4918576ee6",
+      "id": "w2u1xNaTwQ0B0JdfAAAB",
+      "meetingId": "meet_20941289-e733-4321-bc63-7516ff224155",
       "userId": null,
-      "displayName": "Guest",
-      "isHost": true,
-      "joinedAt": "2026-09-06T10:08:33.482Z",
-      "leftAt": "2026-09-06T10:09:16.734Z"
+      "displayName": "as",
+      "isHost": false,
+      "joinedAt": "2026-09-06T10:55:30.281Z",
+      "leftAt": "2026-09-06T10:56:26.874Z"
     },
     {
-      "id": "0VmFa_YIH-ttIqCkAAAI",
-      "meetingId": "meet_d850e483-2970-4cb2-a017-2d4918576ee6",
+      "id": "5PjyRV7vGNIB9KEoAAAC",
+      "meetingId": "meet_20941289-e733-4321-bc63-7516ff224155",
       "userId": null,
-      "displayName": "Zak",
+      "displayName": "as",
       "isHost": true,
-      "joinedAt": "2026-09-06T10:09:20.937Z",
-      "leftAt": "2026-09-06T10:09:32.382Z"
+      "joinedAt": "2026-09-06T10:56:42.642Z",
+      "leftAt": "2026-09-06T10:57:50.930Z"
     },
     {
-      "id": "Fk69CPQfyBc3jQqkAAAL",
-      "meetingId": "meet_d850e483-2970-4cb2-a017-2d4918576ee6",
+      "id": "BiouqvxjqfEuQg5FAAAD",
+      "meetingId": "meet_20941289-e733-4321-bc63-7516ff224155",
       "userId": null,
-      "displayName": "Zak",
-      "isHost": true,
-      "joinedAt": "2026-09-06T10:09:35.428Z",
-      "leftAt": "2026-09-06T10:10:24.199Z"
+      "displayName": "za",
+      "isHost": false,
+      "joinedAt": "2026-09-06T10:56:50.595Z",
+      "leftAt": "2026-09-06T10:57:48.969Z"
     }
   ],
   "messages": {}
