@@ -64,13 +64,76 @@
       "updatedAt": "2026-09-06T12:32:57.049Z"
     },
     {
+      "id": "user_632bb5a5-a55d-48e6-930a-a88ddb4ea4fd",
+      "name": "Zak Host",
+      "email": "zak_1788701761458@example.com",
+      "passwordHash": "$2b$10$.1tqZ7.6z7LpHhnCG2h6JuwcYtOSAc4XAV.4JvoZInigNaPodfLRW",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Zak%20Host",
+      "createdAt": "2026-09-06T13:36:01.577Z",
+      "updatedAt": "2026-09-06T13:36:01.577Z"
+    },
+    {
+      "id": "user_879c967b-4a1e-4c51-a260-6313cdd82a01",
+      "name": "User One",
+      "email": "duplicate_1788701761581@example.com",
+      "passwordHash": "$2b$10$t/yzO7BPACObR7V3hg6uZu82bj4X7J2BPx1wDFDlcDO7YD1mRDAXu",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=User%20One",
+      "createdAt": "2026-09-06T13:36:01.662Z",
+      "updatedAt": "2026-09-06T13:36:01.662Z"
+    },
+    {
+      "id": "user_295ce822-98c6-4399-ba97-0fa4eda41038",
+      "name": "Test Login",
+      "email": "login_test_1788701761664@example.com",
+      "passwordHash": "$2b$10$VgEkchUpoZ9NESWOguBhe.bhlODS4KymmNvUAX4Rm61e3UdIEUsQu",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Test%20Login",
+      "createdAt": "2026-09-06T13:36:01.744Z",
+      "updatedAt": "2026-09-06T13:36:01.744Z"
+    },
+    {
+      "id": "user_f359f307-b603-46d3-964f-2517fc616add",
+      "name": "Test User",
+      "email": "wrong_pass_1788701761824@example.com",
+      "passwordHash": "$2b$10$/nNqQwqF/gaw2Fi42HMMIODuZ1OVQ4It46dMx6egz.d/d6sTHzdwi",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Test%20User",
+      "createdAt": "2026-09-06T13:36:01.899Z",
+      "updatedAt": "2026-09-06T13:36:01.899Z"
+    },
+    {
+      "id": "user_e99cdb67-1974-47e3-a9c1-36e07888ed79",
+      "name": "Meeting Host",
+      "email": "host_1788701761981@example.com",
+      "passwordHash": "$2b$10$HDDakdaVPi26A5QO8gVBYOoX7EKp6uBl9lS5UMZsoKvhn3sVTADsa",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Meeting%20Host",
+      "createdAt": "2026-09-06T13:36:02.058Z",
+      "updatedAt": "2026-09-06T13:36:02.058Z"
+    },
+    {
+      "id": "user_5810a2c1-8980-46e6-bf8f-729b0a7adcf3",
+      "name": "Real Host",
+      "email": "real_host_1788701762060@example.com",
+      "passwordHash": "$2b$10$so0k06Zz/StY0Zl7QVj4p.LkKeBFaslUCcoTOJrlkS7gwDSToZFWi",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Real%20Host",
+      "createdAt": "2026-09-06T13:36:02.135Z",
+      "updatedAt": "2026-09-06T13:36:02.135Z"
+    },
+    {
+      "id": "user_b4208b58-d93f-4739-b5a9-3d3a383bef28",
+      "name": "Stranger",
+      "email": "stranger_1788701762136@example.com",
+      "passwordHash": "$2b$10$1EVq2wnnTKW1CUScKO7A4OMoA6ILBQe.jZnTvRtSdaXjWkzuRvIki",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Stranger",
+      "createdAt": "2026-09-06T13:36:02.211Z",
+      "updatedAt": "2026-09-06T13:36:02.211Z"
+    },
+    {
       "id": "personal_f0927b32df6615f7fdc3d85d419b8f65",
       "name": "Host",
       "email": "personal_f0927b32df6615f7fdc3d85d419b8f65@boom.local",
       "passwordHash": "personal_room_nologin",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Host",
-      "createdAt": "2026-09-06T12:56:41.213Z",
-      "updatedAt": "2026-09-06T12:56:41.213Z"
+      "createdAt": "2026-09-06T15:12:03.497Z",
+      "updatedAt": "2026-09-06T15:12:03.497Z"
     }
   ],
   "meetings": [
@@ -94,36 +157,73 @@
       "endedAt": "2026-09-06T12:32:57.051Z"
     },
     {
-      "id": "meet_49f26504-8e96-4abe-b0ef-33b5b7c072c3",
-      "meetingCode": "GMKA-JDWG",
+      "id": "meet_de92c88e-c2de-484f-9a0a-eb48b903f615",
+      "meetingCode": "ATHH-DHMN",
+      "hostId": "user_e99cdb67-1974-47e3-a9c1-36e07888ed79",
+      "title": "Sprint Planning",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-06T13:36:02.059Z",
+      "isPersistent": false
+    },
+    {
+      "id": "meet_ad5c63f6-2dad-4d9b-a3ea-31ee1267b458",
+      "meetingCode": "4CPS-SVSW",
+      "hostId": "user_5810a2c1-8980-46e6-bf8f-729b0a7adcf3",
+      "title": "Secret Meeting",
+      "status": "ENDED",
+      "createdAt": "2026-09-06T13:36:02.211Z",
+      "isPersistent": false,
+      "endedAt": "2026-09-06T13:36:02.212Z"
+    },
+    {
+      "id": "meet_42f1cc5a-dce6-45ad-8ad1-1f92633d2b9d",
+      "meetingCode": "VJTZ-25W5",
       "hostId": "personal_f0927b32df6615f7fdc3d85d419b8f65",
       "title": "My Boom Room",
       "status": "ACTIVE",
-      "createdAt": "2026-09-06T12:56:41.216Z",
+      "createdAt": "2026-09-06T15:12:03.501Z",
       "isPersistent": true
     }
   ],
   "meetingHostAccessKeys": {
-    "meet_49f26504-8e96-4abe-b0ef-33b5b7c072c3": "aacdc2b5-fba6-4cb8-b866-d29256ffffdec4c6babb-5d26-484d-94aa-84055bcafef1"
+    "meet_42f1cc5a-dce6-45ad-8ad1-1f92633d2b9d": "aacdc2b5-fba6-4cb8-b866-d29256ffffdec4c6babb-5d26-484d-94aa-84055bcafef1"
   },
   "participants": [
     {
-      "id": "gJAybIr9LJ68ZxIMAAAA",
-      "meetingId": "meet_49f26504-8e96-4abe-b0ef-33b5b7c072c3",
-      "userId": null,
-      "displayName": "zaxw",
-      "isHost": true,
-      "joinedAt": "2026-09-06T12:56:44.613Z",
-      "leftAt": "2026-09-06T12:58:11.570Z"
-    },
-    {
-      "id": "2ZpRjgitqJlj6laMAAAB",
-      "meetingId": "meet_49f26504-8e96-4abe-b0ef-33b5b7c072c3",
+      "id": "BlymIRH6Br3MZ81oAAAA",
+      "meetingId": "meet_42f1cc5a-dce6-45ad-8ad1-1f92633d2b9d",
       "userId": null,
       "displayName": "zaxwq",
+      "isHost": true,
+      "joinedAt": "2026-09-06T15:12:06.292Z",
+      "leftAt": "2026-09-06T15:13:01.090Z"
+    },
+    {
+      "id": "SYCv7ILSbR4gP1YtAAAB",
+      "meetingId": "meet_42f1cc5a-dce6-45ad-8ad1-1f92633d2b9d",
+      "userId": null,
+      "displayName": "zaxwqd",
       "isHost": false,
-      "joinedAt": "2026-09-06T12:56:54.501Z",
-      "leftAt": "2026-09-06T12:58:03.572Z"
+      "joinedAt": "2026-09-06T15:12:25.238Z",
+      "leftAt": "2026-09-06T15:13:02.892Z"
+    },
+    {
+      "id": "trqQ1cBX9_7A7TWJAAAC",
+      "meetingId": "meet_42f1cc5a-dce6-45ad-8ad1-1f92633d2b9d",
+      "userId": null,
+      "displayName": "zaxwqd",
+      "isHost": true,
+      "joinedAt": "2026-09-06T15:13:15.903Z",
+      "leftAt": "2026-09-06T15:13:57.688Z"
+    },
+    {
+      "id": "bfwkGludkKrjPCarAAAD",
+      "meetingId": "meet_42f1cc5a-dce6-45ad-8ad1-1f92633d2b9d",
+      "userId": null,
+      "displayName": "zaxwqd1",
+      "isHost": false,
+      "joinedAt": "2026-09-06T15:13:23.955Z",
+      "leftAt": "2026-09-06T15:13:53.001Z"
     }
   ],
   "messages": {}

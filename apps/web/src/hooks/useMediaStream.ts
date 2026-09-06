@@ -11,6 +11,62 @@ export interface PermissionError {
   message: string;
 }
 
+// Runs the raw microphone track through a small Web Audio processing chain
+// before it ever reaches WebRTC:
+//   1. A highpass filter removes sub-80Hz rumble (desk thumps, AC hum, mic
+//      handling noise) that otherwise eats into headroom.
+//   2. A hard limiter caps peak level.
+//
+// The limiter matters specifically for acoustic feedback (the classic PA
+// speaker screech): if a room's mic picks up any of its own speaker output,
+// that leaked audio goes out, comes back through the far end's speaker, gets
+// picked up again, and gets a little louder every lap — a runaway loop that
+// escalates into a piercing screech and drowns out speech. The browser's
+// built-in echoCancellation constraint is the primary defense and stays on,
+// but it isn't perfect on every device/room, especially without headphones.
+// This limiter is the safety net: it caps how loud any leaked/looping audio
+// can get before it's sent, so a small amount of echo can't snowball into a
+// screech. It also quietly helps with harsh/clipped "static-y" audio from
+// loud input spikes in general.
+//
+// Falls back to the raw, unprocessed track if Web Audio isn't available or
+// construction fails for any reason, so a mic never silently stops working.
+function buildProcessedMicTrack(rawTrack: MediaStreamTrack): { track: MediaStreamTrack; ctx: AudioContext | null } {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return { track: rawTrack, ctx: null };
+
+    const ctx = new AudioCtx();
+    const source = ctx.createMediaStreamSource(new MediaStream([rawTrack]));
+
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 80;
+
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -24;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.15;
+
+    const dest = ctx.createMediaStreamDestination();
+    source.connect(highpass);
+    highpass.connect(limiter);
+    limiter.connect(dest);
+
+    const processedTrack = dest.stream.getAudioTracks()[0];
+    if (!processedTrack) {
+      ctx.close().catch(() => {});
+      return { track: rawTrack, ctx: null };
+    }
+    return { track: processedTrack, ctx };
+  } catch (err) {
+    console.warn('Mic processing chain failed, using raw microphone track:', err);
+    return { track: rawTrack, ctx: null };
+  }
+}
+
 export function useMediaStream(initialAudio = true, initialVideo = true) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(initialAudio);
@@ -26,6 +82,13 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
   const [selectedVideoId, setSelectedVideoId] = useState<string>('');
 
   const streamRef = useRef<MediaStream | null>(null);
+  // The unprocessed getUserMedia() stream. We keep a separate handle to it
+  // purely so we can stop its tracks (and thereby release the physical mic/
+  // camera and turn off the OS "recording" indicator) — the stream actually
+  // exposed to the rest of the app (`streamRef`) carries the *processed*
+  // audio track instead of this one.
+  const rawStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const audioEnabledRef = useRef<boolean>(initialAudio);
   const videoEnabledRef = useRef<boolean>(initialVideo);
 
@@ -53,9 +116,17 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
       setIsLoading(true);
       setError(null);
 
-      // Stop any existing tracks
+      // Stop any existing tracks/graph from a previous call (device switch, retry, etc).
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (rawStreamRef.current) {
+        rawStreamRef.current.getTracks().forEach((track) => track.stop());
+        rawStreamRef.current = null;
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
       }
 
       const constraints: MediaStreamConstraints = {
@@ -71,9 +142,13 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
           channelCount: 1,
           sampleRate: 48000,
           sampleSize: 16,
-          // `latency` is a real, browser-supported MediaTrackConstraint but is
-          // missing from TypeScript's DOM lib typings, so it has to be cast in.
-          ...({ latency: 0.01 } as MediaTrackConstraints),
+          // Deliberately NOT setting an explicit `latency` constraint. Forcing
+          // an aggressive low-latency capture buffer (this previously
+          // requested 10ms) can destabilize the browser's internal echo
+          // cancellation, which needs a stable capture/playout timing
+          // reference to know what to subtract — undermining the very thing
+          // meant to stop feedback/echo. Letting the browser pick its own
+          // default keeps echoCancellation working reliably.
         },
         video: videoDeviceId
           ? { deviceId: { exact: videoDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -82,16 +157,28 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
 
       try {
         const userStream = await navigator.mediaDevices.getUserMedia(constraints);
-        streamRef.current = userStream;
-        setStream(userStream);
+        rawStreamRef.current = userStream;
+
+        let finalStream = userStream;
+        const rawAudioTrack = userStream.getAudioTracks()[0];
+        if (rawAudioTrack) {
+          const { track: processedTrack, ctx } = buildProcessedMicTrack(rawAudioTrack);
+          audioCtxRef.current = ctx;
+          if (processedTrack !== rawAudioTrack) {
+            finalStream = new MediaStream([processedTrack, ...userStream.getVideoTracks()]);
+          }
+        }
+
+        streamRef.current = finalStream;
+        setStream(finalStream);
 
         // Apply current audio/video toggle states
-        const audioTracks = userStream.getAudioTracks();
+        const audioTracks = finalStream.getAudioTracks();
         if (audioTracks.length > 0) {
           audioTracks[0].enabled = audioEnabledRef.current;
         }
 
-        const videoTracks = userStream.getVideoTracks();
+        const videoTracks = finalStream.getVideoTracks();
         if (videoTracks.length > 0) {
           videoTracks[0].enabled = videoEnabledRef.current;
         }
@@ -138,6 +225,12 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
       navigator.mediaDevices?.removeEventListener('devicechange', updateDevices);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (rawStreamRef.current) {
+        rawStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
       }
     };
   }, [initMedia, updateDevices]);
