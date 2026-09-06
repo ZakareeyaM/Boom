@@ -153,12 +153,17 @@ export class RoomManager {
 
         // Authenticate user if token provided in socket handshake
         const token = socket.handshake.auth?.token;
+        const hostAccessKey = typeof socket.handshake.auth?.hostAccessKey === 'string'
+          ? socket.handshake.auth.hostAccessKey
+          : '';
         let authUser = null;
         if (token) {
           authUser = await authService.verifyToken(token);
         }
 
-        const isHost = authUser ? authUser.id === meeting.hostId : (room.participants.size === 0 && !room.hostSocketId);
+        const authenticatedHost = !!authUser && authUser.id === meeting.hostId;
+        const persistentRoomHost = !!hostAccessKey && await this.db.verifyMeetingHostAccessKey(meeting.id, hostAccessKey);
+        const isHost = authenticatedHost || persistentRoomHost || (room.participants.size === 0 && !room.hostSocketId);
         if (isHost && !room.hostSocketId) {
           room.hostSocketId = socket.id;
         }
@@ -338,8 +343,11 @@ export class RoomManager {
         return callback?.({ success: false, error: 'Only the host can end the meeting for everyone.' });
       }
 
-      // Mark meeting ended in database
-      await this.db.endMeeting(room.meeting.id);
+      // Personal rooms keep their permanent link. Ending a personal room
+      // only ends the current live session; the same link can be reused later.
+      if (!room.meeting.isPersistent) {
+        await this.db.endMeeting(room.meeting.id);
+      }
 
       // Notify all participants
       this.io.to(meetingCode).emit('meeting:ended', {

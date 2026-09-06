@@ -16,7 +16,9 @@ export interface DatabaseAdapter {
   getUserById(id: string): Promise<User | null>;
   
   // Meetings
-  createMeeting(meeting: { id: string; meetingCode: string; hostId: string; title?: string }): Promise<Meeting>;
+  createMeeting(meeting: { id: string; meetingCode: string; hostId: string; title?: string; hostAccessKey?: string; isPersistent?: boolean }): Promise<Meeting>;
+  getMeetingByHostAccessKey(hostAccessKey: string): Promise<Meeting | null>;
+  verifyMeetingHostAccessKey(meetingId: string, hostAccessKey: string): Promise<boolean>;
   getMeetingByCode(code: string): Promise<Meeting | null>;
   getMeetingById(id: string): Promise<Meeting | null>;
   endMeeting(id: string): Promise<void>;
@@ -36,6 +38,7 @@ class FileStoreDatabase implements DatabaseAdapter {
   private dataFilePath = path.resolve(__dirname, '../../.data_store.json');
   private users: Map<string, User & { passwordHash: string }> = new Map();
   private meetings: Map<string, Meeting> = new Map();
+  private meetingHostAccessKeys: Map<string, string> = new Map();
   private participants: Map<string, any> = new Map();
   private messages: Map<string, ChatMessage[]> = new Map();
 
@@ -52,7 +55,17 @@ class FileStoreDatabase implements DatabaseAdapter {
           for (const u of parsed.users) this.users.set(u.id, u);
         }
         if (parsed.meetings) {
-          for (const m of parsed.meetings) this.meetings.set(m.id, m);
+          for (const m of parsed.meetings) {
+            const legacyHostKey = m.__hostAccessKey;
+            delete m.__hostAccessKey;
+            this.meetings.set(m.id, m);
+            if (legacyHostKey) this.meetingHostAccessKeys.set(m.id, legacyHostKey);
+          }
+        }
+        if (parsed.meetingHostAccessKeys) {
+          for (const [meetingId, key] of Object.entries(parsed.meetingHostAccessKeys)) {
+            this.meetingHostAccessKeys.set(meetingId, String(key));
+          }
         }
         if (parsed.participants) {
           for (const p of parsed.participants) this.participants.set(p.id, p);
@@ -73,6 +86,7 @@ class FileStoreDatabase implements DatabaseAdapter {
       const data = {
         users: Array.from(this.users.values()),
         meetings: Array.from(this.meetings.values()),
+        meetingHostAccessKeys: Object.fromEntries(this.meetingHostAccessKeys.entries()),
         participants: Array.from(this.participants.values()),
         messages: Object.fromEntries(this.messages.entries()),
       };
@@ -118,7 +132,7 @@ class FileStoreDatabase implements DatabaseAdapter {
     return safeUser;
   }
 
-  async createMeeting(meeting: { id: string; meetingCode: string; hostId: string; title?: string }): Promise<Meeting> {
+  async createMeeting(meeting: { id: string; meetingCode: string; hostId: string; title?: string; hostAccessKey?: string; isPersistent?: boolean }): Promise<Meeting> {
     const now = new Date().toISOString();
     const newMeeting: Meeting = {
       id: meeting.id,
@@ -127,10 +141,25 @@ class FileStoreDatabase implements DatabaseAdapter {
       title: meeting.title || 'Boom Meeting',
       status: 'ACTIVE',
       createdAt: now,
+      isPersistent: meeting.isPersistent === true,
     };
+    if (meeting.hostAccessKey) this.meetingHostAccessKeys.set(newMeeting.id, meeting.hostAccessKey);
     this.meetings.set(newMeeting.id, newMeeting);
     this.saveToDisk();
     return newMeeting;
+  }
+
+  async getMeetingByHostAccessKey(hostAccessKey: string): Promise<Meeting | null> {
+    const key = hostAccessKey.trim();
+    for (const m of this.meetings.values()) {
+      if (this.meetingHostAccessKeys.get(m.id) === key) return m;
+    }
+    return null;
+  }
+
+  async verifyMeetingHostAccessKey(meetingId: string, hostAccessKey: string): Promise<boolean> {
+    const meeting = this.meetings.get(meetingId);
+    return !!meeting && meeting.isPersistent === true && this.meetingHostAccessKeys.get(meetingId) === hostAccessKey.trim();
   }
 
   async getMeetingByCode(code: string): Promise<Meeting | null> {
@@ -271,20 +300,38 @@ class PostgresDatabase implements DatabaseAdapter {
     return res.rows[0] || null;
   }
 
-  async createMeeting(meeting: { id: string; meetingCode: string; hostId: string; title?: string }): Promise<Meeting> {
+  async createMeeting(meeting: { id: string; meetingCode: string; hostId: string; title?: string; hostAccessKey?: string; isPersistent?: boolean }): Promise<Meeting> {
     const res = await this.pool.query(
-      `INSERT INTO meetings (id, meeting_code, host_id, title, status)
-       VALUES ($1, $2, $3, $4, 'ACTIVE')
-       RETURNING id, meeting_code as "meetingCode", host_id as "hostId", title, status, created_at as "createdAt"`,
-      [meeting.id, meeting.meetingCode, meeting.hostId, meeting.title || 'Boom Meeting']
+      `INSERT INTO meetings (id, meeting_code, host_id, title, status, host_access_key, is_persistent)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6)
+       RETURNING id, meeting_code as "meetingCode", host_id as "hostId", title, status, created_at as "createdAt", is_persistent as "isPersistent"`,
+      [meeting.id, meeting.meetingCode, meeting.hostId, meeting.title || 'Boom Meeting', meeting.hostAccessKey || null, meeting.isPersistent === true]
     );
     return res.rows[0];
+  }
+
+  async getMeetingByHostAccessKey(hostAccessKey: string): Promise<Meeting | null> {
+    const res = await this.pool.query(
+      `SELECT id, meeting_code as "meetingCode", host_id as "hostId", title, status,
+              created_at as "createdAt", ended_at as "endedAt", is_persistent as "isPersistent"
+       FROM meetings WHERE host_access_key = $1 LIMIT 1`,
+      [hostAccessKey.trim()]
+    );
+    return res.rows[0] || null;
+  }
+
+  async verifyMeetingHostAccessKey(meetingId: string, hostAccessKey: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `SELECT 1 FROM meetings WHERE id = $1 AND host_access_key = $2 AND is_persistent = TRUE LIMIT 1`,
+      [meetingId, hostAccessKey.trim()]
+    );
+    return res.rowCount === 1;
   }
 
   async getMeetingByCode(code: string): Promise<Meeting | null> {
     const res = await this.pool.query(
       `SELECT id, meeting_code as "meetingCode", host_id as "hostId", title, status,
-              created_at as "createdAt", ended_at as "endedAt"
+              created_at as "createdAt", ended_at as "endedAt", is_persistent as "isPersistent"
        FROM meetings WHERE meeting_code = $1`,
       [code.toUpperCase().trim()]
     );
@@ -294,7 +341,7 @@ class PostgresDatabase implements DatabaseAdapter {
   async getMeetingById(id: string): Promise<Meeting | null> {
     const res = await this.pool.query(
       `SELECT id, meeting_code as "meetingCode", host_id as "hostId", title, status,
-              created_at as "createdAt", ended_at as "endedAt"
+              created_at as "createdAt", ended_at as "endedAt", is_persistent as "isPersistent"
        FROM meetings WHERE id = $1`,
       [id]
     );

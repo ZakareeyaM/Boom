@@ -3,7 +3,7 @@ export interface User { id: string; name: string; email: string; avatarUrl?: str
 export interface AuthSession { user: User; token: string; }
 export interface AuthResponse { user: User; token: string; }
 export type MeetingStatus = 'ACTIVE' | 'ENDED';
-export interface Meeting { id: string; meetingCode: string; hostId: string; title?: string; status: MeetingStatus; createdAt: string; endedAt?: string; }
+export interface Meeting { id: string; meetingCode: string; hostId: string; title?: string; status: MeetingStatus; createdAt: string; endedAt?: string; isPersistent?: boolean; }
 export interface Participant { id: string; userId?: string | null; meetingId: string; displayName: string; isHost: boolean; audioEnabled: boolean; videoEnabled: boolean; screenShareActive: boolean; joinedAt: string; }
 export interface ChatMessage { id: string; meetingId: string; senderId: string; senderName: string; isHost: boolean; message: string; createdAt: string; }
 export interface DrawLinePayload { prevX:number; prevY:number; currX:number; currY:number; color:string; size:number; isEraser:boolean; }
@@ -39,7 +39,7 @@ export interface ServerToClientEvents {
   'error':(d:{code:string;message:string})=>void;
 }
 export interface ClientToServerEvents {
-  'meeting:join':(d:{meetingCode:string;displayName:string;audioEnabled:boolean;videoEnabled:boolean},cb:(r:{success:boolean;error?:string;data?:any})=>void)=>void;
+  'meeting:join':(d:{meetingCode:string;displayName:string;audioEnabled:boolean;videoEnabled:boolean;hostAccessKey?:string},cb:(r:{success:boolean;error?:string;data?:any})=>void)=>void;
   'meeting:leave':()=>void; 'meeting:end':(cb?:(r:{success:boolean;error?:string})=>void)=>void; 'participant:toggleMedia':(d:{audioEnabled?:boolean;videoEnabled?:boolean})=>void;
   'participant:mute':(d:{targetParticipantId:string;media?:'audio'|'video'})=>void; 'participant:remove':(d:{targetParticipantId:string})=>void;
   'screenShare:request':()=>void; 'screenShare:requestResponse':(d:{requesterSocketId:string;approved:boolean})=>void; 'screenShare:revoke':(d:{targetParticipantId:string})=>void; 'screenShare:start':()=>void; 'screenShare:stop':()=>void;

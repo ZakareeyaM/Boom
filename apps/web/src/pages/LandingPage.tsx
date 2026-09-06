@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Video, ShieldCheck, Zap, Laptop, ArrowRight, Sparkles } from 'lucide-react';
+import { Video, ShieldCheck, Zap, Laptop, Sparkles, Link2 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Navbar } from '../components/layout/Navbar';
@@ -12,21 +12,51 @@ export const LandingPage: React.FC = () => {
   const [meetingCode, setMeetingCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasPersonalRoom, setHasPersonalRoom] = useState(() => !!localStorage.getItem('boom_personal_room_key'));
+  const [isOpeningPersonalRoom, setIsOpeningPersonalRoom] = useState(false);
   const navigate = useNavigate();
 
   const handleCreateMeeting = async () => {
     setIsCreating(true);
     setError(null);
     try {
-      const res = await fetchApi<{ meeting: Meeting }>('/api/meetings', {
+      let personalRoomKey = localStorage.getItem('boom_personal_room_key');
+      if (!personalRoomKey) {
+        personalRoomKey = crypto.randomUUID() + crypto.randomUUID();
+        localStorage.setItem('boom_personal_room_key', personalRoomKey);
+      }
+
+      const res = await fetchApi<{ meeting: Meeting }>('/api/meetings/personal', {
         method: 'POST',
-        body: JSON.stringify({ title: 'Quick Meeting' }),
+        body: JSON.stringify({ hostAccessKey: personalRoomKey }),
+      });
+      setHasPersonalRoom(true);
+      navigate(`/join/${res.meeting.meetingCode}`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to open your personal meeting room');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleOpenPersonalRoom = async () => {
+    setIsOpeningPersonalRoom(true);
+    setError(null);
+    try {
+      const personalRoomKey = localStorage.getItem('boom_personal_room_key');
+      if (!personalRoomKey) {
+        await handleCreateMeeting();
+        return;
+      }
+      const res = await fetchApi<{ meeting: Meeting }>('/api/meetings/personal', {
+        method: 'POST',
+        body: JSON.stringify({ hostAccessKey: personalRoomKey }),
       });
       navigate(`/join/${res.meeting.meetingCode}`);
     } catch (err: any) {
-      setError(err.message || 'Failed to create meeting');
+      setError(err.message || 'Failed to open your personal meeting room');
     } finally {
-      setIsCreating(false);
+      setIsOpeningPersonalRoom(false);
     }
   };
 
@@ -64,12 +94,12 @@ export const LandingPage: React.FC = () => {
             <Button
               variant="primary"
               size="lg"
-              onClick={handleCreateMeeting}
-              isLoading={isCreating}
-              leftIcon={<Video className="w-5 h-5" />}
+              onClick={hasPersonalRoom ? handleOpenPersonalRoom : handleCreateMeeting}
+              isLoading={isCreating || isOpeningPersonalRoom}
+              leftIcon={hasPersonalRoom ? <Link2 className="w-5 h-5" /> : <Video className="w-5 h-5" />}
               className="w-full sm:w-auto"
             >
-              New Meeting
+              {hasPersonalRoom ? 'Open My Room' : 'Create My Room'}
             </Button>
 
             <form onSubmit={handleJoinByCode} className="w-full sm:w-auto flex items-center gap-2">
@@ -115,7 +145,7 @@ export const LandingPage: React.FC = () => {
             </div>
             <h3 className="text-lg font-semibold text-white">Instant Sharing</h3>
             <p className="text-sm text-slate-400 leading-relaxed">
-              Create a meeting with one click, send the link over WhatsApp or email, and talk in seconds without forced accounts.
+              Create your permanent personal room once, then reuse the same link whenever you want without creating a new meeting each time.
             </p>
           </div>
 

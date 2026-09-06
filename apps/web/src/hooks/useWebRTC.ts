@@ -262,10 +262,15 @@ export function useWebRTC({
   useEffect(() => {
     if (!meetingCode) return;
 
+    const hostAccessKey = typeof window !== 'undefined'
+      ? localStorage.getItem('boom_personal_room_key') || undefined
+      : undefined;
+
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(SOCKET_SERVER_URL, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
+      auth: { hostAccessKey },
     });
 
     socketRef.current = socket;
@@ -280,6 +285,7 @@ export function useWebRTC({
           displayName: displayNameRef.current,
           audioEnabled: audioEnabledRef.current,
           videoEnabled: videoEnabledRef.current,
+          hostAccessKey,
         },
         (res) => {
           if (!res.success) {
@@ -560,6 +566,28 @@ export function useWebRTC({
         audioSender.replaceTrack(audioTrack).catch(console.error);
       } else if (!audioSender && audioTrack) {
         pc.addTrack(audioTrack, activeStream);
+      }
+
+      // Keep microphone delivery on a stable Opus configuration. Mono voice
+      // audio avoids unnecessary stereo processing and a moderate bitrate is
+      // much more resilient on ordinary Wi-Fi/mobile connections.
+      const currentAudioSender =
+        pc.getSenders().find((sender) => sender.track?.kind === 'audio') || audioSender;
+      if (currentAudioSender) {
+        try {
+          const parameters = currentAudioSender.getParameters();
+          const encodings = parameters.encodings?.length ? parameters.encodings : [{}];
+          parameters.encodings = encodings.map((encoding: RTCRtpEncodingParameters) => ({
+            ...encoding,
+            maxBitrate: 64000,
+            dtx: true,
+          }));
+          currentAudioSender.setParameters(parameters).catch(() => {
+            // Some browsers do not expose these RTP sender parameters.
+          });
+        } catch {
+          // Keep the browser's default WebRTC audio configuration.
+        }
       }
     });
 

@@ -22,6 +22,7 @@ interface ControlBarProps {
   participantCount: number;
   unreadCount: number;
   chatAlert?: boolean;
+  sessionTime: string;
   isChatOpen: boolean;
   isParticipantsOpen: boolean;
   isHost: boolean;
@@ -45,6 +46,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   participantCount,
   unreadCount,
   chatAlert = false,
+  sessionTime,
   isChatOpen,
   isParticipantsOpen,
   isHost,
@@ -204,6 +206,16 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             </span>
           )}
         </button>
+
+        <div
+          className="flex items-center gap-2 h-[46px] px-2.5 sm:px-3 rounded-xl bg-dark-card border border-dark-border"
+          aria-label={`Session duration ${sessionTime}`}
+          title={`Session duration: ${sessionTime}`}
+        >
+          <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]" />
+          <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wider text-slate-400">Session</span>
+          <span className="font-mono text-sm font-bold tabular-nums text-slate-100">{sessionTime}</span>
+        </div>
       </div>
 
       {/* Right: Leave / End Controls */}

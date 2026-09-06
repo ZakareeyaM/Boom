@@ -51,6 +51,22 @@ meetingsRouter.post('/', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// Get or create the browser's permanent personal meeting room.
+meetingsRouter.post('/personal', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parsed = z.object({ hostAccessKey: z.string().min(16).max(128) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'A valid personal room key is required.' });
+      return;
+    }
+
+    const meeting = await meetingService.getOrCreatePersonalMeeting(parsed.data.hostAccessKey);
+    res.status(200).json({ meeting });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to load personal meeting room' });
+  }
+});
+
 // Get meeting by code
 meetingsRouter.get('/code/:code', async (req: Request, res: Response): Promise<void> => {
   try {
