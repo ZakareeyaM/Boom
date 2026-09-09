@@ -123,6 +123,7 @@ export function useWebRTC({
     polite: boolean;
     makingOffer: boolean;
     ignoreOffer: boolean;
+    isAnswering: boolean;
     pendingCandidates: RTCIceCandidateInit[];
   }
   const peerMeta = useRef<Map<string, PeerMeta>>(new Map());
@@ -235,6 +236,7 @@ export function useWebRTC({
       polite,
       makingOffer: false,
       ignoreOffer: false,
+      isAnswering: false,
       pendingCandidates: [],
     });
 
@@ -286,7 +288,6 @@ export function useWebRTC({
 
       if (existingTrack) {
         try {
-          existingTrack.stop();
           remoteMediaStream.removeTrack(existingTrack);
         } catch {}
       }
@@ -328,20 +329,16 @@ export function useWebRTC({
       };
     };
 
-    // Renegotiate automatically whenever the browser tells us the current
-    // local description no longer describes what we want to send (a track was
-    // added/removed after the initial offer/answer). This is the piece that
-    // was previously missing, and is why audio/video that arrived "late"
-    // (permissions granted after the fact, camera turned on mid-call) never
-    // reached peers who had already connected.
+    // Renegotiate automatically whenever tracks are added/removed.
+    // Suppress initiating duplicate offers while answering an incoming offer.
     pc.onnegotiationneeded = async () => {
       const meta = peerMeta.current.get(remoteSocketId);
       const sock = socketRef.current;
       if (!meta || !sock) return;
+      if (meta.isAnswering || meta.makingOffer || pc.signalingState !== 'stable') return;
       try {
         meta.makingOffer = true;
-        // No-argument form: the browser generates an offer or answer as
-        // appropriate for the current signaling state and applies it.
+        // No-argument form: the browser generates an offer for the current state.
         await pc.setLocalDescription();
         if (pc.localDescription) {
           if (pc.localDescription.type === 'offer') {
@@ -626,31 +623,32 @@ export function useWebRTC({
     socket.on('webrtc:offer', async (payload) => {
       const remoteSocketId = payload.callerSocketId;
       try {
-        // Make sure our own camera/mic are ready before answering, so the
-        // answer SDP includes our tracks too (otherwise the caller never
-        // sees our video/audio even though the connection succeeds).
         await waitForLocalStream();
 
         const pc = createPeerConnection(remoteSocketId);
         const meta = peerMeta.current.get(remoteSocketId);
         if (!meta) return;
 
-        // Perfect negotiation: if we're also in the middle of sending our own
-        // offer (or already have one pending) when an offer arrives, that's a
-        // collision. The polite peer backs off and accepts the incoming offer
-        // (the browser auto-rolls-back its own pending local offer); the
-        // impolite peer ignores the incoming one and lets its own proceed.
-        // Without this, two peers could each apply the other's offer as if it
-        // were an answer, corrupting the session description — which is
-        // exactly the kind of state that produces garbled/robotic audio.
+        // Mark as answering so addTrack during PC creation doesn't fire a redundant offer
+        meta.isAnswering = true;
+
         const offerCollision =
           payload.sdp.type === 'offer' && (meta.makingOffer || pc.signalingState !== 'stable');
         meta.ignoreOffer = !meta.polite && offerCollision;
         if (meta.ignoreOffer) {
+          meta.isAnswering = false;
           return;
         }
 
-        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        if (offerCollision) {
+          // Polite peer rolls back local offer to accept the remote offer
+          await Promise.all([
+            pc.setLocalDescription({ type: 'rollback' }),
+            pc.setRemoteDescription(new RTCSessionDescription(payload.sdp)),
+          ]);
+        } else {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        }
         await flushPendingCandidates(remoteSocketId, pc);
 
         if (payload.sdp.type === 'offer') {
@@ -663,8 +661,14 @@ export function useWebRTC({
             });
           }
         }
+
+        setTimeout(() => {
+          if (meta) meta.isAnswering = false;
+        }, 500);
       } catch (err) {
         console.error('Error handling WebRTC offer:', err);
+        const meta = peerMeta.current.get(remoteSocketId);
+        if (meta) meta.isAnswering = false;
       }
     });
 
@@ -673,8 +677,11 @@ export function useWebRTC({
       try {
         const pc = peerConnections.current.get(payload.responderSocketId);
         if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-          await flushPendingCandidates(payload.responderSocketId, pc);
+          // Only apply remote answer if we are currently awaiting one
+          if (pc.signalingState === 'have-local-offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            await flushPendingCandidates(payload.responderSocketId, pc);
+          }
         }
       } catch (err) {
         console.error('Error handling WebRTC answer:', err);

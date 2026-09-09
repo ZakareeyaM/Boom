@@ -21,6 +21,30 @@ import { useScreenShare } from '../hooks/useScreenShare';
 import { useWebRTC } from '../hooks/useWebRTC';
 import type { Participant, DrawLinePayload, EraseRectPayload, WhiteboardAsset, WhiteboardCursor, WhiteboardText, WhiteboardShape } from '@boom/types';
 
+const RemoteAudioPlayer: React.FC<{ stream: MediaStream | null; enabled: boolean }> = ({ stream, enabled }) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.srcObject = stream;
+    audio.muted = !enabled;
+    if (stream && enabled) {
+      audio.play().catch(() => {});
+    }
+  }, [stream, enabled]);
+
+  return (
+    <audio
+      ref={audioRef}
+      autoPlay
+      playsInline
+      controls={false}
+      preload="auto"
+    />
+  );
+};
+
 export const MeetingRoomPage: React.FC = () => {
   const { meetingId } = useParams<{ meetingId: string }>();
   const meetingCode = meetingId || '';
@@ -411,6 +435,17 @@ export const MeetingRoomPage: React.FC = () => {
             />
           )
         )}
+      </div>
+
+      {/* Global persistent remote audio playback */}
+      <div className="hidden" aria-hidden="true">
+        {remoteParticipants.map((p) => (
+          <RemoteAudioPlayer
+            key={p.id}
+            stream={remoteStreams.get(p.id) || null}
+            enabled={p.audioEnabled}
+          />
+        ))}
       </div>
 
       {/* Bottom Floating Control Bar */}

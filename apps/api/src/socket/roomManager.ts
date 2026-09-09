@@ -672,7 +672,7 @@ export class RoomManager {
 
     socket.on('whiteboard:scroll', ({ scrollTop }) => {
       const meetingCode=this.socketToRoom.get(socket.id); if(!meetingCode) return; const room=this.rooms.get(meetingCode); if(!room) return; const p=room.participants.get(socket.id);
-      if(!p || !(socket.id === room.hostSocketId || room.whiteboardEditors.has(socket.id))) return;
+      if(!p || socket.id !== room.hostSocketId) return;
       socket.to(meetingCode).emit('whiteboard:scroll',{scrollTop});
     });
 

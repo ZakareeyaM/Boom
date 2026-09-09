@@ -136,6 +136,7 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const isRemoteScrollRef = useRef(false);
 
   const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'rect-erase' | 'shape' | 'text'>('pen');
   const [textDraft, setTextDraft] = useState('');
@@ -382,7 +383,13 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
 
     (window as any).__boom_scrollTo = (scrollTop: number) => {
       if (containerRef.current) {
-        containerRef.current.scrollTop = scrollTop;
+        if (Math.abs(containerRef.current.scrollTop - scrollTop) > 2) {
+          isRemoteScrollRef.current = true;
+          containerRef.current.scrollTop = scrollTop;
+          requestAnimationFrame(() => {
+            isRemoteScrollRef.current = false;
+          });
+        }
       }
     };
 
@@ -703,7 +710,6 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     const point = getCoordinates(e); setPointerPos(point); onCursor?.({ x: point.x, y: point.y, visible: true });
     if (!canEdit) return;
     if (activeTool === 'eraser') eraseTextAtPoint(point);
-    try { canvasRef.current?.releasePointerCapture?.(e.pointerId); } catch {}
     if (activeTool === 'rect-erase' || activeTool === 'shape') {
       if (!selectionStartRef.current) return;
       const container = containerRef.current;
@@ -802,19 +808,23 @@ export const WhiteboardStage: React.FC<WhiteboardStageProps> = ({
     isDrawingRef.current = false;
     lastPointRef.current = null;
     erasedTextIdsRef.current.clear();
+    try { canvasRef.current?.releasePointerCapture?.(e.pointerId); } catch {}
   };
 
   // Broadcast our scroll position when we're the host, so viewers stay on
   // par with whatever part of the board we're currently writing on.
   const scrollRafRef = useRef<number | null>(null);
   const handleContainerScroll = () => {
-    if (!canEdit) return;
+    if (!isHost) return;
+    if (isRemoteScrollRef.current) return;
     const container = containerRef.current;
     if (!container) return;
     if (scrollRafRef.current !== null) return;
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
-      onScroll(container.scrollTop);
+      if (!isRemoteScrollRef.current) {
+        onScroll(container.scrollTop);
+      }
     });
   };
 

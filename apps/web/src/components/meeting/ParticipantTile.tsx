@@ -20,7 +20,6 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   isScreenShare = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { isSpeaking } = useAudioMeter(stream, !participant.audioEnabled);
 
   useEffect(() => {
@@ -28,29 +27,7 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
       videoRef.current.srcObject = stream;
       videoRef.current.muted = true;
     }
-
-    // Keep remote voice audio on a dedicated <audio> element instead of
-    // routing it through the video element. This avoids browser-specific
-    // video/audio autoplay and track-mixing issues. The local tile stays
-    // silent to prevent echo.
-    if (audioRef.current) {
-      const audio = audioRef.current;
-      audio.srcObject = isLocal ? null : stream;
-      audio.muted = isLocal || !participant.audioEnabled;
-      // Never allow a stale playback rate/volume to survive a stream swap.
-      // A normal WebRTC voice stream must play at real time and at one copy.
-      audio.playbackRate = 1;
-      audio.defaultPlaybackRate = 1;
-      audio.volume = 1;
-
-      if (!isLocal && stream && participant.audioEnabled) {
-        void audio.play().catch(() => {
-          // Browser autoplay policy may require a user gesture. The element
-          // remains attached and will play after the next allowed interaction.
-        });
-      }
-    }
-  }, [stream, isLocal, participant.audioEnabled]);
+  }, [stream]);
 
   const qualityColors = {
     EXCELLENT: 'text-emerald-400',
@@ -69,25 +46,11 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
         ref={videoRef}
         autoPlay
         playsInline
-        muted={true} // Remote audio is played by the dedicated audio element below
+        muted={true} // Remote audio is played at the room level
         className={`w-full h-full object-cover transition-opacity duration-300 ${
           participant.videoEnabled && stream ? 'opacity-100' : 'opacity-0 absolute'
         } ${isLocal && !isScreenShare ? 'scale-x-[-1]' : ''}`} // Mirror local camera preview
       />
-
-      {/* Dedicated remote audio output. Keeping this separate from the video
-          element makes remote microphone playback reliable across browsers. */}
-      {!isLocal && (
-        <audio
-          ref={audioRef}
-          autoPlay
-          playsInline
-          controls={false}
-          preload="auto" 
-          className="hidden"
-          aria-hidden="true"
-        />
-      )}
 
       {/* Camera Off Avatar Fallback */}
       {(!participant.videoEnabled || !stream) && (
