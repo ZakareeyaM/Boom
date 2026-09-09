@@ -23,16 +23,58 @@ import type { Participant, DrawLinePayload, EraseRectPayload, WhiteboardAsset, W
 
 const RemoteAudioPlayer: React.FC<{ stream: MediaStream | null; enabled: boolean }> = ({ stream, enabled }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const attachedTrackIdRef = useRef<string | null>(null);
+
+  const audioTrack = stream?.getAudioTracks()[0] || null;
+  const trackId = audioTrack?.id || null;
+  const isLive = audioTrack && audioTrack.readyState === 'live';
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.srcObject = stream;
+
+    if (!audioTrack || !isLive) {
+      if (audio.srcObject) {
+        audio.srcObject = null;
+      }
+      attachedTrackIdRef.current = null;
+      return;
+    }
+
+    // Only assign srcObject if the track has actually changed to prevent audio decoding resets / clicking
+    if (attachedTrackIdRef.current !== trackId || !audio.srcObject) {
+      attachedTrackIdRef.current = trackId;
+      audio.srcObject = new MediaStream([audioTrack]);
+    }
+
     audio.muted = !enabled;
-    if (stream && enabled) {
+
+    if (enabled && audio.paused) {
       audio.play().catch(() => {});
     }
-  }, [stream, enabled]);
+  }, [trackId, isLive, enabled]);
+
+  // Autoplay policy unlock on user interaction
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const unlockAutoplay = () => {
+      if (audio.paused && enabled && audio.srcObject) {
+        audio.play().catch(() => {});
+      }
+    };
+
+    window.addEventListener('click', unlockAutoplay, { once: true });
+    window.addEventListener('keydown', unlockAutoplay, { once: true });
+    window.addEventListener('touchstart', unlockAutoplay, { once: true });
+
+    return () => {
+      window.removeEventListener('click', unlockAutoplay);
+      window.removeEventListener('keydown', unlockAutoplay);
+      window.removeEventListener('touchstart', unlockAutoplay);
+    };
+  }, [enabled]);
 
   return (
     <audio
@@ -438,7 +480,18 @@ export const MeetingRoomPage: React.FC = () => {
       </div>
 
       {/* Global persistent remote audio playback */}
-      <div className="hidden" aria-hidden="true">
+      <div
+        style={{
+          position: 'fixed',
+          top: -9999,
+          left: -9999,
+          opacity: 0,
+          pointerEvents: 'none',
+          width: 0,
+          height: 0,
+        }}
+        aria-hidden="true"
+      >
         {remoteParticipants.map((p) => (
           <RemoteAudioPlayer
             key={p.id}

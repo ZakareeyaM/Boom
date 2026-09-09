@@ -69,9 +69,8 @@ export function useMediaStream(initialAudio = true, initialVideo = true) {
           autoGainControl: true,
           // Mono voice capture avoids channel mismatches and reduces the chance
           // of duplicated/phasey microphone audio on some devices.
-          channelCount: 1,
-          sampleRate: 48000,
-          sampleSize: 16,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 48000 },
         },
         video: videoDeviceId
           ? { deviceId: { exact: videoDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }

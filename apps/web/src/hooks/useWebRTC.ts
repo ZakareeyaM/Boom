@@ -203,17 +203,20 @@ export function useWebRTC({
   // reaches the other side even though the connection looks "fine".
   const waitForLocalStream = useCallback((timeoutMs = 8000) => {
     return new Promise<void>((resolve) => {
-      if (localStreamRef.current) {
+      if (localStreamRef.current && localStreamRef.current.getAudioTracks().length > 0) {
         resolve();
         return;
       }
       const start = Date.now();
       const interval = setInterval(() => {
-        if (localStreamRef.current || Date.now() - start > timeoutMs) {
+        if (
+          (localStreamRef.current && localStreamRef.current.getAudioTracks().length > 0) ||
+          Date.now() - start > timeoutMs
+        ) {
           clearInterval(interval);
           resolve();
         }
-      }, 100);
+      }, 50);
     });
   }, []);
 
@@ -298,17 +301,9 @@ export function useWebRTC({
 
       setRemoteStreams((prev) => {
         const next = new Map(prev);
-        next.set(remoteSocketId, remoteMediaStream);
+        next.set(remoteSocketId, new MediaStream(remoteMediaStream.getTracks()));
         return next;
       });
-
-      track.onunmute = () => {
-        setRemoteStreams((prev) => {
-          const next = new Map(prev);
-          next.set(remoteSocketId, remoteMediaStream);
-          return next;
-        });
-      };
 
       track.onended = () => {
         try {
@@ -320,7 +315,7 @@ export function useWebRTC({
         setRemoteStreams((prev) => {
           const next = new Map(prev);
           if (remoteMediaStream.getTracks().length > 0) {
-            next.set(remoteSocketId, remoteMediaStream);
+            next.set(remoteSocketId, new MediaStream(remoteMediaStream.getTracks()));
           } else {
             next.delete(remoteSocketId);
           }
